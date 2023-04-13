@@ -10,6 +10,7 @@ from cltk.lemmatize.lat import LatinBackoffLemmatizer
 from cltk.ner.ner import tag_ner
 from cltk.sentence.lat import LatinPunktSentenceTokenizer
 from tqdm import tqdm
+from whitakers_words.parser import Parser
 
 
 @dataclass
@@ -51,7 +52,7 @@ class CorpusAnalytics:
             text,
             drop_accents=True,
             drop_macrons=True,
-            jv_replacement=True,
+            jv_replacement=False,
             ligature_replacement=True,
         )
         # Remove non end of sentence punctuation
@@ -214,6 +215,7 @@ class CorpusAnalytics:
 
 
 lemmata_analyzer = CorpusAnalytics("lat", lemmatizer_type="cltk")
+parser = Parser()
 
 
 def get_lemmata_frequencies(text: str) -> Dict[str, int]:
@@ -226,11 +228,41 @@ def get_lemmata_frequencies(text: str) -> Dict[str, int]:
     return processed_text.lemmata_frequencies
 
 
+def get_definition(word: str) -> str:
+    """
+    Get definition for Latin word.
+    :param word: Latin word
+    :return: definition
+    """
+    result = parser.parse(word)
+    analyses = result.forms[0].analyses
+    analyses_key = next(iter(analyses.items()))
+    definitions = analyses_key[1].lexeme.senses
+    return ", ".join(definitions)
+
+
 if __name__ == "__main__":
-    analyzer = CorpusAnalytics("lat", lemmatizer_type="cltk")
-    with open("sample_latin_text.txt", "r") as f:
-        text = f.read()
-    frequency_dict = get_lemmata_frequencies(text)
-    # Save dictionary as pretty JSON
-    with open("frequency_dict.json", "w") as f:
-        json.dump(frequency_dict, f, indent=4)
+    # Load text
+    # with open("sample_latin_text.txt", "r") as f:
+    #     text = f.read()
+    # # Create frequency_dict.json
+    # with open("frequency_dict.json", "w") as f:
+    #     json.dump(get_lemmata_frequencies(text), f)
+    # Get list of words from keys of frequency_dict.json
+    with open("frequency_dict.json", "r") as f:
+        frequency_dict = json.load(f)
+    words = list(frequency_dict.keys())
+    # For each word, try to get a defition with get_definition and write to file
+    found = 0
+    not_found = 0
+    with open("definitions.txt", "w") as f:
+        for word in words:
+            try:
+                definition = get_definition(word)
+                f.write(f"{word}: {definition}\n")
+                found += 1
+            except:
+                f.write(f"{word}: None\n")
+                not_found += 1
+    print(f"Found: {found}")
+    print(f"Not found: {not_found}")
