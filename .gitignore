@@ -1,3 +1,5 @@
 venv/
 .idea/
 tests/.pytest_cache
+sample_output/
+*.json
