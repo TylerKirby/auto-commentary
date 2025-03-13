@@ -14,6 +14,7 @@ from autocom.languages.greek.parsers import (
     clean_greek_text,
     detect_greek_dialects,
     extract_greek_words,
+    get_greek_dialect_features,
     get_greek_lemmata_frequencies,
     lemmatize_greek_text,
 )
@@ -188,8 +189,51 @@ def test_get_greek_lemmata_frequencies():
 
 def test_detect_greek_dialects():
     """Test Greek dialect detection."""
-    # This is currently a placeholder function
-    result = detect_greek_dialects("Πάντες ἄνθρωποι τοῦ εἰδέναι ὀρέγονται φύσει.")
+    # Test Attic dialect detection
+    attic_text = "θάλαττα καὶ πράττω τήμερον. τὼ ἄνδρε βλέπω."
+    attic_result = detect_greek_dialects(attic_text)
+    assert attic_result == "attic"
 
-    # Should return "unknown" for now
-    assert result == "unknown"
+    # Test Ionic dialect detection
+    ionic_text = "θάλασσα καὶ πρήσσω. αὖτις ἔλεγε τοῖσι."
+    ionic_result = detect_greek_dialects(ionic_text)
+    assert ionic_result == "ionic"
+
+    # Test Doric dialect detection
+    doric_text = "μάτηρ καὶ ἁμέρα. φαντί καὶ ἔχοντι."
+    doric_result = detect_greek_dialects(doric_text)
+    assert doric_result == "doric"
+
+    # Test Koine dialect detection
+    koine_text = "σήμερον ἐγένετο ἵνα συνάγω. φθάνω ἐρωτάω."
+    koine_result = detect_greek_dialects(koine_text)
+    assert koine_result == "koine"
+
+    # Test with mixed features
+    mixed_text = "θάλαττα καὶ σήμερον. ἐγένετο ἵνα λέγω."
+    # This could return either "attic" or "koine" depending on the scoring
+    # We'll just check that it returns a recognized dialect
+    mixed_result = detect_greek_dialects(mixed_text)
+    assert mixed_result in ["attic", "koine", "unknown"]
+
+    # Test with insufficient features
+    insufficient_text = "καὶ τὸ καὶ τὰ"
+    insufficient_result = detect_greek_dialects(insufficient_text)
+    assert insufficient_result == "unknown"
+
+
+def test_get_greek_dialect_features():
+    """Test retrieving dialect features."""
+    # Test getting features for a known dialect
+    attic_info = get_greek_dialect_features("attic")
+    assert "period" in attic_info
+    assert "region" in attic_info
+    assert "features" in attic_info
+    assert "authors" in attic_info
+    assert "Athens" in attic_info["region"]
+    assert any("ττ" in feature for feature in attic_info["features"])
+
+    # Test getting features for unknown dialect
+    unknown_info = get_greek_dialect_features("nonexistent")
+    assert unknown_info["period"] == "Unknown"
+    assert unknown_info["region"] == "Unknown"

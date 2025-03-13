@@ -11,7 +11,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from autocom import add_line_numbers, clean_text, clear_cache, detect_language, generate_commentary
+from autocom import (
+    add_line_numbers,
+    clean_text,
+    clear_cache,
+    detect_language,
+    detect_language_with_confidence,
+    generate_commentary,
+    get_language_stats,
+)
 from autocom.core.utils import get_file_contents, write_file_contents
 
 
@@ -44,6 +52,21 @@ def main():
     parser.add_argument("--no-definitions", help="Exclude word definitions from the commentary", action="store_true")
 
     parser.add_argument("--clear-cache", help="Clear the definition cache before processing", action="store_true")
+
+    parser.add_argument(
+        "--show-language-stats", help="Show detailed statistics about language detection", action="store_true"
+    )
+
+    parser.add_argument(
+        "--language-threshold",
+        help="Minimum threshold for language detection confidence (0.0-1.0, default: 0.1)",
+        type=float,
+        default=0.1,
+    )
+
+    parser.add_argument(
+        "--detect-dialect", help="Attempt to detect the specific dialect for Greek texts", action="store_true"
+    )
 
     args = parser.parse_args()
 
@@ -83,8 +106,43 @@ def main():
     # Auto-detect language if not specified
     language = args.language
     if language is None:
-        language = detect_language(input_text)
-        print(f"Detected language: {language}")
+        if args.show_language_stats:
+            # Show detailed language stats
+            stats = get_language_stats(input_text)
+            print(f"Language statistics:")
+            print(f"  Total characters: {stats['total_characters']}")
+            print(f"  Latin characters: {stats['latin_characters']} ({stats['latin']*100:.1f}%)")
+            print(f"  Greek characters: {stats['greek_characters']} ({stats['greek']*100:.1f}%)")
+            print(f"  Overall confidence: {stats['confidence']*100:.1f}%")
+
+            language, confidence = detect_language_with_confidence(input_text, threshold=args.language_threshold)
+            if language == "unknown":
+                print(f"Could not confidently detect language. Using 'latin' as fallback.")
+                language = "latin"
+            else:
+                print(f"Detected language: {language} (confidence: {confidence*100:.1f}%)")
+        else:
+            # Use simple detection
+            language = detect_language(input_text)
+            print(f"Detected language: {language}")
+
+    # Detect dialect if requested and the language is Greek
+    if args.detect_dialect and language == "greek":
+        from autocom.languages.greek.parsers import detect_greek_dialects, get_greek_dialect_features
+
+        dialect = detect_greek_dialects(input_text)
+        print(f"\nDialect detection result: {dialect}")
+
+        if dialect != "unknown":
+            # Get detailed information about the dialect
+            dialect_info = get_greek_dialect_features(dialect)
+            print(f"  Period: {dialect_info['period']}")
+            print(f"  Region: {dialect_info['region']}")
+            print("  Key features:")
+            for feature in dialect_info["features"][:3]:  # Show first 3 features
+                print(f"    - {feature}")
+            if dialect_info["authors"]:
+                print(f"  Notable authors: {', '.join(dialect_info['authors'][:3])}")  # Show up to 3 authors
 
     # Generate commentary
     try:

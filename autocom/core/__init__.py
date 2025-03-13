@@ -1,7 +1,7 @@
 """
 Core Package.
 
-This package contains core functionality shared across the application.
+This package provides the core functionality for the autocom package.
 """
 
 from autocom.core.layout import (
@@ -18,7 +18,9 @@ from autocom.core.text import (
     analyze_word_frequencies,
     clean_text,
     detect_language,
+    detect_language_with_confidence,
     get_definition_for_language,
+    get_language_stats,
     get_words_from_text,
 )
 from autocom.core.utils import (
@@ -35,11 +37,13 @@ from autocom.core.utils import (
 __all__ = [
     # Text processing
     "detect_language",
+    "detect_language_with_confidence",
     "get_words_from_text",
     "get_definition_for_language",
     "clean_text",
     "analyze_word_frequencies",
     "add_line_numbers",
+    "get_language_stats",
     # Utilities
     "get_cache_dir",
     "load_cache",

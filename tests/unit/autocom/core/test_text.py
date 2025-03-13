@@ -13,7 +13,9 @@ from autocom.core.text import (
     analyze_word_frequencies,
     clean_text,
     detect_language,
+    detect_language_with_confidence,
     get_definition_for_language,
+    get_language_stats,
     get_words_from_text,
 )
 
@@ -35,6 +37,111 @@ def test_detect_language_mixed():
     mixed_text = "Lorem ipsum Πάντες ἄνθρωποι"
     # Should detect Greek even with Latin characters present
     assert detect_language(mixed_text) == "greek"
+
+
+def test_get_language_stats_pure_latin():
+    """Test language statistics with pure Latin text."""
+    latin_text = "Gallia est omnis divisa in partes tres"
+    stats = get_language_stats(latin_text)
+
+    assert stats["latin"] > 0.9  # Most characters should be Latin
+    assert stats["greek"] == 0.0  # No Greek characters
+    assert stats["confidence"] > 0.9
+    assert stats["total_characters"] > 0
+    assert stats["latin_characters"] > 0
+    assert stats["greek_characters"] == 0
+
+
+def test_get_language_stats_pure_greek():
+    """Test language statistics with pure Greek text."""
+    greek_text = "Πάντες ἄνθρωποι τοῦ εἰδέναι ὀρέγονται φύσει"
+    stats = get_language_stats(greek_text)
+
+    assert stats["greek"] > 0.9  # Most characters should be Greek
+    assert stats["latin"] == 0.0  # No Latin characters
+    assert stats["confidence"] > 0.9
+    assert stats["total_characters"] > 0
+    assert stats["greek_characters"] > 0
+    assert stats["latin_characters"] == 0
+
+
+def test_get_language_stats_mixed():
+    """Test language statistics with mixed text."""
+    mixed_text = "Lorem ipsum Πάντες ἄνθρωποι"
+    stats = get_language_stats(mixed_text)
+
+    assert stats["latin"] > 0.0
+    assert stats["greek"] > 0.0
+    assert stats["total_characters"] == stats["latin_characters"] + stats["greek_characters"]
+
+
+def test_get_language_stats_empty():
+    """Test language statistics with empty text."""
+    empty_text = ""
+    stats = get_language_stats(empty_text)
+
+    assert stats["latin"] == 0.0
+    assert stats["greek"] == 0.0
+    assert stats["confidence"] == 0.0
+    assert stats["total_characters"] == 0
+
+
+def test_detect_language_with_confidence_latin():
+    """Test detecting Latin text with confidence."""
+    latin_text = "Gallia est omnis divisa in partes tres"
+    language, confidence = detect_language_with_confidence(latin_text)
+
+    assert language == "latin"
+    assert confidence > 0.9
+
+
+def test_detect_language_with_confidence_greek():
+    """Test detecting Greek text with confidence."""
+    greek_text = "Πάντες ἄνθρωποι τοῦ εἰδέναι ὀρέγονται φύσει"
+    language, confidence = detect_language_with_confidence(greek_text)
+
+    assert language == "greek"
+    assert confidence > 0.9
+
+
+def test_detect_language_with_confidence_mixed():
+    """Test detecting mixed text with confidence."""
+    # Text with more Greek than Latin
+    mixed_text_1 = "Lorem Πάντες ἄνθρωποι τοῦ εἰδέναι ὀρέγονται φύσει"
+    language_1, confidence_1 = detect_language_with_confidence(mixed_text_1)
+
+    assert language_1 == "greek"
+    assert confidence_1 > 0.5
+
+    # Text with more Latin than Greek
+    mixed_text_2 = "Gallia est omnis divisa in partes tres Πάντες"
+    language_2, confidence_2 = detect_language_with_confidence(mixed_text_2)
+
+    assert language_2 == "latin"
+    assert confidence_2 > 0.5
+
+
+def test_detect_language_with_confidence_empty():
+    """Test detecting language with confidence for empty text."""
+    empty_text = ""
+    language, confidence = detect_language_with_confidence(empty_text)
+
+    assert language == "unknown"
+    assert confidence == 0.0
+
+
+def test_detect_language_with_confidence_threshold():
+    """Test the threshold parameter for language detection."""
+    # Text with a small amount of Greek
+    mostly_latin = "Gallia est omnis divisa in partes tres Π"
+
+    # With default threshold
+    language_1, _ = detect_language_with_confidence(mostly_latin)
+    assert language_1 == "latin"
+
+    # With very high threshold
+    language_2, _ = detect_language_with_confidence(mostly_latin, threshold=0.9)
+    assert language_2 == "unknown"
 
 
 @patch("autocom.languages.greek.parsers.extract_greek_words")
