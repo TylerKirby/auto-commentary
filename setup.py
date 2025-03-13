@@ -1,57 +1,49 @@
-import sys
-import warnings
-
+#!/usr/bin/env python
 from setuptools import find_packages, setup
 
-# Define core requirements
-core_requirements = [
-    "cltk>=1.1.6",
-    "requests>=2.28.2",
-    "tqdm>=4.65.0",
-]
-
-# Define development requirements
-dev_requirements = [
-    "pytest>=7.3.1,<8.0.0",
-]
-
-# Check if whitakers_words is already installed
-try:
-    import whitakers_words
-
-    has_whitakers = True
-except ImportError:
-    has_whitakers = False
-    warnings.warn(
-        "\nThe whitakers_words package is required but could not be found.\n"
-        "Please install it with one of the following methods:\n"
-        "1. pip install git+https://github.com/blagae/whitakers_words.git\n"
-        "2. Clone and install manually: \n"
-        "   git clone https://github.com/blagae/whitakers_words.git\n"
-        "   cd whitakers_words\n"
-        "   pip install -e .\n"
-        "See the README.md for more installation options."
-    )
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
 
 setup(
     name="autocom",
-    version="0.1.0",
+    version="0.2.0",
+    author="Tyler Kirby",
+    author_email="tyler.kirby9398@gmail.com",
+    description="Automatic commentary generator for Latin and Greek texts",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/tylerkirby/auto-commentary",
     packages=find_packages(),
-    install_requires=core_requirements,
-    dependency_links=[
-        "git+https://github.com/blagae/whitakers_words.git#egg=whitakers_words",
-    ],
-    extras_require={
-        "dev": dev_requirements,
-        "all": dev_requirements + ["whitakers_words"],
-    },
-    python_requires=">=3.9",
-    author="Your Name",
-    author_email="your.email@example.com",
-    description="Auto-commentary tool for Latin and Greek texts",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
+    python_requires=">=3.8",
+    install_requires=[
+        "requests>=2.25.0",
+        "unicodedata2>=15.0.0",
+    ],
+    extras_require={
+        "dev": [
+            "pytest>=6.0.0",
+            "black>=21.5b2",
+            "flake8>=3.9.0",
+            "isort>=5.9.0",
+        ],
+        "advanced": [
+            "cltk>=1.0.0",  # For enhanced Latin and Greek NLP
+            "PyPDF2>=2.0.0",  # For PDF processing
+            "pylatexenc>=2.0",  # For enhanced LaTeX handling
+        ],
+    },
+    entry_points={
+        "console_scripts": [
+            "autocom=autocom.cli:main",
+        ],
+    },
+    include_package_data=True,
+    package_data={
+        "autocom": ["data/*.json"],
+    },
 )
