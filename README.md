@@ -125,6 +125,11 @@ The system follows this pipeline:
    pip install -e .
    ```
 
+4. For development, install additional dev dependencies:
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
 ### Alternative Installation Methods for Whitaker's Words
 
 If you encounter connection issues when installing the whitakers_words dependency, try one of these alternatives:
@@ -202,6 +207,42 @@ Failed to connect to github.com port 443: Couldn't connect to server
 - Try using a VPN if GitHub is restricted in your region
 - Try the SSH method if you have SSH keys set up with GitHub
 - Clone the repository manually and install locally
+
+## Development Workflow
+
+This project follows strict code quality standards and uses CI/CD to enforce them. Here's what you need to know when contributing:
+
+### Python Style Guide
+
+- We follow PEP 8 with a few modifications:
+  - Line length is set to 120 characters (instead of the standard 79)
+  - We use Black for code formatting
+  - We use isort for import organization
+
+### Pre-commit Hooks
+
+We recommend setting up pre-commit hooks to automatically check your code before committing:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This will automatically run the following checks before each commit:
+- Black (code formatting)
+- isort (import sorting)
+- Ruff (linting)
+- pytest (running tests)
+
+### Continuous Integration
+
+Our GitHub Actions workflow automatically runs on each push and pull request to the main branch:
+
+1. **Code Style Checks**: Verifies that your code follows our style guide using Black and isort
+2. **Tests**: Runs the test suite and reports any failures
+3. **Code Coverage**: Tracks test coverage to ensure code quality
+
+Pull requests cannot be merged unless all CI checks pass, enforcing our code quality standards.
 
 ## Contributing
 
