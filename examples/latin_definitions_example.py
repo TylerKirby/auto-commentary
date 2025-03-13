@@ -12,10 +12,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from autocom.definitions import (
     bulk_lookup,
     format_for_commentary,
-    get_contextual_definition,
-    get_definition,
-    get_morpheus_definition,
-    get_whitakers_definition,
+    get_latin_contextual_definition,
+    get_latin_definition,
+    get_latin_morpheus_definition,
+    get_latin_whitakers_definition,
 )
 
 
@@ -30,13 +30,11 @@ def demonstrate_basic_lookup():
         print(f"\nDefinition for '{word}':")
 
         # Get definition using only Whitaker's Words
-        whitakers_def = get_whitakers_definition(word)
-        print(
-            f"  Whitaker's Words: {', '.join(whitakers_def.get('definitions', ['No definition found']))}"
-        )
+        whitakers_def = get_latin_whitakers_definition(word)
+        print(f"  Whitaker's Words: {', '.join(whitakers_def.get('definitions', ['No definition found']))}")
 
         # Get definition using the enhanced approach (combines multiple sources)
-        enhanced_def = get_definition(word, use_morpheus=True)
+        enhanced_def = get_latin_definition(word, use_morpheus=True)
         print(f"  Enhanced Definition:")
         print(f"    - Lemma: {enhanced_def.get('lemma')}")
         print(f"    - Part of Speech: {enhanced_def.get('part_of_speech', 'Unknown')}")
@@ -54,9 +52,7 @@ def demonstrate_basic_lookup():
 
         # Print formatted commentary-style definition
         print(f"\n  Formatted for Commentary:")
-        print(
-            f"    {enhanced_def.get('formatted_definition', 'No formatted definition')}"
-        )
+        print(f"    {enhanced_def.get('formatted_definition', 'No formatted definition')}")
 
 
 def demonstrate_contextual_definitions():
@@ -75,7 +71,7 @@ def demonstrate_contextual_definitions():
         print(f"\nContextual definition for '{word}' in context {context}:")
 
         # Get contextual definition
-        context_def = get_contextual_definition(word, context)
+        context_def = get_latin_contextual_definition(word, context)
 
         # Print definitions
         print(f"  - Definitions:")
@@ -98,15 +94,11 @@ def demonstrate_bulk_lookup():
     print(f"Looking up definitions for all words in: '{text}'")
 
     # Get definitions for all words
-    definitions = bulk_lookup(
-        words, use_morpheus=False
-    )  # Using Whitaker's only for speed
+    definitions = bulk_lookup(words, use_morpheus=False)  # Using Whitaker's only for speed
 
     # Print all definitions
     for word, def_data in definitions.items():
-        print(
-            f"\n{word}: {', '.join(def_data.get('definitions', ['No definition found']))}"
-        )
+        print(f"\n{word}: {', '.join(def_data.get('definitions', ['No definition found']))}")
 
 
 if __name__ == "__main__":

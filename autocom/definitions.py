@@ -1,3 +1,11 @@
+"""
+Latin Dictionary and Definition Module.
+
+This module provides functions for retrieving and processing Latin word definitions
+from various sources including Whitaker's Words, Perseus Morpheus API, and CLTK.
+It is specifically designed for Latin language analysis and lookup.
+"""
+
 import json
 import os
 import time
@@ -43,7 +51,7 @@ load_cache()
 
 
 @lru_cache(maxsize=1000)
-def get_whitakers_definition(word: str) -> Dict[str, Any]:
+def get_latin_whitakers_definition(word: str) -> Dict[str, Any]:
     """
     Get definition for a Latin word using Whitaker's Words.
 
@@ -91,9 +99,9 @@ def get_whitakers_definition(word: str) -> Dict[str, Any]:
     return result
 
 
-def get_morpheus_definition(word: str) -> Dict[str, Any]:
+def get_latin_morpheus_definition(word: str) -> Dict[str, Any]:
     """
-    Get definition from Perseus Morpheus API.
+    Get definition from Perseus Morpheus API for Latin words.
 
     Args:
         word: Latin word to analyze
@@ -114,9 +122,7 @@ def get_morpheus_definition(word: str) -> Dict[str, Any]:
 
         # The API returns 201 (Created) for successful requests
         if response.status_code not in [200, 201]:
-            result = {
-                "error": f"Failed to retrieve definition for {word} (Status code: {response.status_code})"
-            }
+            result = {"error": f"Failed to retrieve definition for {word} (Status code: {response.status_code})"}
         else:
             data = response.json()
             result = parse_morpheus_response(data, word)
@@ -327,7 +333,7 @@ def format_for_commentary(result: Dict[str, Any]) -> str:
     return formatted
 
 
-def get_definition(
+def get_latin_definition(
     word: str,
     use_morpheus: bool = True,
     include_grammar: bool = True,
@@ -348,7 +354,7 @@ def get_definition(
         Dictionary with comprehensive definition information
     """
     # Check cache
-    cache_key = f"definition_{word}"
+    cache_key = f"latin_definition_{word}"
     if cache_key in definitions_cache:
         return definitions_cache[cache_key]
 
@@ -360,7 +366,7 @@ def get_definition(
     }
 
     # Get definition from Whitaker's Words
-    whitakers_result = get_whitakers_definition(word)
+    whitakers_result = get_latin_whitakers_definition(word)
 
     # Update result with Whitaker's data
     result["definitions"] = whitakers_result.get("definitions", [])
@@ -371,7 +377,7 @@ def get_definition(
     # Use Morpheus for enhanced definition if requested
     if use_morpheus:
         try:
-            morpheus_data = get_morpheus_definition(word)
+            morpheus_data = get_latin_morpheus_definition(word)
 
             if "error" not in morpheus_data:
                 # Update with Morpheus data which is typically more accurate
@@ -393,9 +399,7 @@ def get_definition(
                     for key, value in morpheus_data["grammar"].items():
                         result["grammar"][key] = value
             else:
-                result["morpheus_error"] = morpheus_data.get(
-                    "error", "Unknown Morpheus error"
-                )
+                result["morpheus_error"] = morpheus_data.get("error", "Unknown Morpheus error")
         except Exception as e:
             result["morpheus_error"] = str(e)
 
@@ -426,11 +430,9 @@ def get_definition(
     return result
 
 
-def get_contextual_definition(
-    word: str, context: List[str], use_morpheus: bool = True
-) -> Dict[str, Any]:
+def get_latin_contextual_definition(word: str, context: List[str], use_morpheus: bool = True) -> Dict[str, Any]:
     """
-    Get definition with context-aware disambiguation.
+    Get definition for a Latin word with context-aware disambiguation.
 
     Args:
         word: Latin word to look up
@@ -441,7 +443,7 @@ def get_contextual_definition(
         Best definition based on context
     """
     # First get all possible definitions
-    definition_data = get_definition(word, use_morpheus=use_morpheus)
+    definition_data = get_latin_definition(word, use_morpheus=use_morpheus)
 
     # If there's only one definition, no need for disambiguation
     if len(definition_data.get("definitions", [])) <= 1:
@@ -467,9 +469,7 @@ def get_contextual_definition(
     return definition_data
 
 
-def bulk_lookup(
-    words: List[str], use_morpheus: bool = True
-) -> Dict[str, Dict[str, Any]]:
+def bulk_lookup(words: List[str], use_morpheus: bool = True) -> Dict[str, Dict[str, Any]]:
     """
     Look up definitions for multiple words at once.
 
@@ -483,6 +483,6 @@ def bulk_lookup(
     results = {}
 
     for word in words:
-        results[word] = get_definition(word, use_morpheus=use_morpheus)
+        results[word] = get_latin_definition(word, use_morpheus=use_morpheus)
 
     return results

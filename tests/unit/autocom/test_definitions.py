@@ -1,4 +1,4 @@
-"""Tests for the definitions module."""
+"""Tests for the Latin definitions module."""
 
 import json
 import os
@@ -9,15 +9,15 @@ import pytest
 from autocom.definitions import (
     add_dictionary_references,
     format_for_commentary,
-    get_definition,
-    get_whitakers_definition,
+    get_latin_definition,
+    get_latin_whitakers_definition,
     parse_morpheus_response,
 )
 
 
 @pytest.fixture
 def sample_whitakers_result():
-    """Sample Whitaker's Words result."""
+    """Sample Whitaker's Words result for Latin words."""
     return {
         "lemma": "amo",
         "definitions": ["to love", "to like", "to be fond of"],
@@ -34,7 +34,7 @@ def sample_whitakers_result():
 
 @pytest.fixture
 def sample_morpheus_response():
-    """Sample Morpheus API response."""
+    """Sample Morpheus API response for Latin words."""
     return {
         "RDF": {
             "Annotation": {
@@ -64,8 +64,8 @@ def sample_morpheus_response():
 
 
 @patch("autocom.definitions.parser")
-def test_get_whitakers_definition(mock_parser):
-    """Test getting definition from Whitaker's Words."""
+def test_get_latin_whitakers_definition(mock_parser):
+    """Test getting definition from Whitaker's Words for Latin."""
     # Set up mock parser response
     mock_analyses = MagicMock()
     mock_analyses.lexeme.senses = ["to love", "to like"]
@@ -77,7 +77,7 @@ def test_get_whitakers_definition(mock_parser):
     mock_parser.parse.return_value.forms = [mock_form]
 
     # Call the function
-    result = get_whitakers_definition("amo")
+    result = get_latin_whitakers_definition("amo")
 
     # Check result
     assert result["lemma"] == "amo"
@@ -86,10 +86,10 @@ def test_get_whitakers_definition(mock_parser):
     assert result["part_of_speech"] == "verb"
 
 
-@patch("autocom.definitions.get_whitakers_definition")
-@patch("autocom.definitions.get_morpheus_definition")
-def test_get_definition(mock_get_morpheus, mock_get_whitakers, sample_whitakers_result):
-    """Test getting a definition."""
+@patch("autocom.definitions.get_latin_whitakers_definition")
+@patch("autocom.definitions.get_latin_morpheus_definition")
+def test_get_latin_definition(mock_get_morpheus, mock_get_whitakers, sample_whitakers_result):
+    """Test getting a Latin definition."""
     # Set up mock responses
     updated_sample = sample_whitakers_result.copy()
     updated_sample["definitions"] = [
@@ -102,7 +102,7 @@ def test_get_definition(mock_get_morpheus, mock_get_whitakers, sample_whitakers_
     mock_get_morpheus.return_value = None
 
     # Call the function
-    result = get_definition("amo", use_morpheus=False)
+    result = get_latin_definition("amo", use_morpheus=False)
 
     # Check result
     assert result["lemma"] == "amo"
@@ -112,7 +112,7 @@ def test_get_definition(mock_get_morpheus, mock_get_whitakers, sample_whitakers_
 
 
 def test_format_for_commentary(sample_whitakers_result):
-    """Test formatting definition data for commentary."""
+    """Test formatting Latin definition data for commentary."""
     # Call the function
     result = format_for_commentary(sample_whitakers_result)
 

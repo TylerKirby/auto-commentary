@@ -13,7 +13,7 @@ from tqdm import tqdm
 from whitakers_words.parser import Parser
 
 # Import the new definitions module
-from autocom.definitions import get_definition as get_enhanced_definition
+from autocom.definitions import get_latin_definition as get_enhanced_definition
 
 
 @dataclass
@@ -103,10 +103,7 @@ class CorpusAnalytics:
             if (
                 len(token) > 2
                 and token[-3:] != "que"
-                and (
-                    token[-2:] == "ve"
-                    or (token[-2:] == "ue" and token[-3] not in vowels)
-                )
+                and (token[-2:] == "ve" or (token[-2:] == "ue" and token[-3] not in vowels))
             ):
                 token = token[:-2]
         # Normalize and return token
@@ -130,9 +127,7 @@ class CorpusAnalytics:
         :param lemmata: list of lemmata tuples
         :return: dict of lemmata frequency
         """
-        lemmata = [
-            l[1] for l in lemmata if len(l[1]) > 0
-        ]  # TODO: pull out and put in process_text
+        lemmata = [l[1] for l in lemmata if len(l[1]) > 0]  # TODO: pull out and put in process_text
         clean_lemmata = [self.clean_lemma(l) for l in lemmata]
         freq_dict_temp = dict(Counter(clean_lemmata))
         freq_dict = {}
@@ -141,10 +136,7 @@ class CorpusAnalytics:
             if k is None:
                 continue
             # Check if lemma has any punctuation and reduce, e.g. con-vero -> convero
-            elif (
-                only_alphabetic_pattern.sub("", k) != k
-                and only_alphabetic_pattern.sub("", k) is not None
-            ):
+            elif only_alphabetic_pattern.sub("", k) != k and only_alphabetic_pattern.sub("", k) is not None:
                 try:
                     freq_dict[only_alphabetic_pattern.sub("", k)] += v
                 except KeyError:
@@ -193,17 +185,13 @@ class CorpusAnalytics:
         clean_text = self.clean_text(text, lower=True)
         text_title = text.split("\n")[0]
         only_alphabetic_pattern = re.compile("[^a-z]")
-        clean_tokens = [
-            only_alphabetic_pattern.sub("", t) for t in clean_text.split(" ")
-        ]  # Remove punc from tokens
+        clean_tokens = [only_alphabetic_pattern.sub("", t) for t in clean_text.split(" ")]  # Remove punc from tokens
         if self.lemmatizer_type == "cltk":
             lemmata = self.lemmatizer.lemmatize(clean_tokens)
         if filter_ner:
             clean_text_ner = self.clean_text(text, lower=False)
             ner_tags = self.ner_tagger(clean_text_ner, use_spacy=False)
-            filter_lemmata = [
-                t[0] for t in zip(lemmata, ner_tags) if t[1][1] is not True
-            ]
+            filter_lemmata = [t[0] for t in zip(lemmata, ner_tags) if t[1][1] is not True]
             lemmata_frequencies = self.lemmata_freq(filter_lemmata)
         else:
             lemmata_frequencies = self.lemmata_freq(lemmata)
@@ -231,9 +219,7 @@ def get_lemmata_frequencies(text: str) -> Dict[str, int]:
     return processed_text.lemmata_frequencies
 
 
-def get_definition(
-    word: str, use_enhanced: bool = True, use_morpheus: bool = True
-) -> Union[str, Dict]:
+def get_definition(word: str, use_enhanced: bool = True, use_morpheus: bool = True) -> Union[str, Dict]:
     """
     Get definition for Latin word.
 
