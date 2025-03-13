@@ -51,3 +51,5 @@ sample_output/
 **/definitions_cache.json
 # Keep exceptions.json as it's part of the code
 # *.json
+
+.cursor/
