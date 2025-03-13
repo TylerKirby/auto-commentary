@@ -12,6 +12,9 @@ from cltk.sentence.lat import LatinPunktSentenceTokenizer
 from tqdm import tqdm
 from whitakers_words.parser import Parser
 
+# Import the new definitions module
+from autocom.definitions import get_definition as get_enhanced_definition
+
 
 @dataclass
 class ProcessedText:
@@ -228,17 +231,68 @@ def get_lemmata_frequencies(text: str) -> Dict[str, int]:
     return processed_text.lemmata_frequencies
 
 
-def get_definition(word: str) -> str:
+def get_definition(
+    word: str, use_enhanced: bool = True, use_morpheus: bool = True
+) -> Union[str, Dict]:
     """
     Get definition for Latin word.
-    :param word: Latin word
-    :return: definition
+
+    Args:
+        word: Latin word
+        use_enhanced: Whether to use the enhanced definition function
+        use_morpheus: Whether to use the Morpheus API (only applies if use_enhanced is True)
+
+    Returns:
+        Either a string with the definition (if use_enhanced=False) or a dictionary
+        with comprehensive definition information (if use_enhanced=True)
     """
+    if use_enhanced:
+        return get_enhanced_definition(word, use_morpheus=use_morpheus)
+
+    # Legacy implementation using only Whitaker's Words
     result = parser.parse(word)
+    if not result or not result.forms:
+        return f"No definition found for '{word}'"
+
     analyses = result.forms[0].analyses
+    if not analyses:
+        return f"No analyses found for '{word}'"
+
     analyses_key = next(iter(analyses.items()))
     definitions = analyses_key[1].lexeme.senses
     return ", ".join(definitions)
+
+
+def generate_vocab_list(
+    text: str, use_enhanced_definitions: bool = True, use_morpheus: bool = True
+) -> Dict[str, Union[str, Dict]]:
+    """
+    Generate vocabulary list for Latin text.
+
+    Args:
+        text: Latin text
+        use_enhanced_definitions: Whether to use the enhanced definition function
+        use_morpheus: Whether to use the Morpheus API
+
+    Returns:
+        Dictionary with word as key and definition as value
+    """
+    processed_text = lemmata_analyzer.process_text(text)
+    lemma_freq = processed_text.lemmata_frequencies
+
+    vocab_dict = {}
+    for lemma, freq in lemma_freq.items():
+        if lemma:  # Skip None values
+            vocab_dict[lemma] = {
+                "definition": get_definition(
+                    lemma,
+                    use_enhanced=use_enhanced_definitions,
+                    use_morpheus=use_morpheus,
+                ),
+                "frequency": freq,
+            }
+
+    return vocab_dict
 
 
 if __name__ == "__main__":
