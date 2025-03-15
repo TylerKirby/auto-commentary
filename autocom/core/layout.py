@@ -11,21 +11,28 @@ from typing import Any, Dict, List, Set
 from autocom.core.text import detect_language, get_words_from_text
 
 
-def split_text_into_pages(text: str, lines_per_page: int = 10) -> List[str]:
+def split_text_into_pages(text: str, lines_per_page: int) -> List[str]:
     """
-    Split text into pages with a specified number of lines per page.
+    Split text into pages based on number of lines per page.
 
     Args:
-        text: Source text in Latin or Greek
-        lines_per_page: Number of text lines per page
+        text: Complete text
+        lines_per_page: Number of lines per page
 
     Returns:
-        List of text chunks, one per page
+        List of text pages
     """
-    # Split text into lines
-    lines = text.strip().split("\n")
+    # Split text by newline
+    lines = text.split("\n")
 
-    # Process in chunks of lines_per_page
+    # Filter out empty lines
+    lines = [line for line in lines if line.strip()]
+
+    # Handle case where we have very few lines
+    if len(lines) <= lines_per_page:
+        return [text]
+
+    # Group lines into pages
     pages = []
     for i in range(0, len(lines), lines_per_page):
         page_lines = lines[i : i + lines_per_page]
@@ -45,18 +52,8 @@ def format_latex_header() -> str:
 \documentclass[12pt]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{fontspec}
-\usepackage{polyglossia}
 \usepackage{multicol}
-\usepackage[a4paper, margin=1in]{geometry}
-
-% Setup for Greek
-\setmainlanguage{english}
-\setotherlanguage[variant=ancient]{greek}
-\newfontfamily\greekfont[Script=Greek]{GFS Porson}
-
-% Setup for Latin
-\setotherlanguage{latin}
+\usepackage[letterpaper, margin=0.75in]{geometry}
 
 % Custom styling
 \usepackage{fancyhdr}
@@ -65,9 +62,20 @@ def format_latex_header() -> str:
 \renewcommand{\headrulewidth}{0pt}
 \fancyfoot[C]{\thepage}
 
-% Definition box styling
-\usepackage{tcolorbox}
-\tcbuselibrary{breakable}
+% For latin text (simplified approach) - now without italics and with more spacing
+\newenvironment{latin}{\large\linespread{1.5}\selectfont}{}
+
+% For horizontal rule
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+% Reduce space between items in lists and paragraphs
+\setlength{\parskip}{0.3em}
+\setlength{\parsep}{0pt}
+\setlength{\parindent}{0pt}
+\setlength{\itemsep}{0pt}
+\setlength{\topsep}{0pt}
+\setlength{\columnsep}{0.5em}
 
 \begin{document}
 """
@@ -96,18 +104,47 @@ def format_text_section(text: str, language: str) -> str:
     Returns:
         LaTeX formatted text section
     """
-    # Apply language-specific formatting
+    # Apply language-specific formatting - simplified for pdflatex
     if language == "greek":
-        formatted_text = rf"\begin{{greek}}{text}\end{{greek}}"
+        # Use a simple approach for Greek text since we can't use polyglossia
+        formatted_text = rf"\large {text}"
     else:  # latin
         formatted_text = rf"\begin{{latin}}{text}\end{{latin}}"
 
-    # Wrap in a text section
+    # Return simple text section without box or title
     return rf"""
-\begin{{tcolorbox}}[breakable, colback=white, colframe=black, title=Text]
 {formatted_text}
-\end{{tcolorbox}}
 """
+
+
+def escape_latex_special_chars(text: str) -> str:
+    """
+    Escape special characters in LaTeX.
+
+    Args:
+        text: Text to escape
+
+    Returns:
+        Escaped text
+    """
+    # Replace problematic characters
+    replacements = {
+        "_": "\\_",
+        "&": "\\&",
+        "%": "\\%",
+        "$": "\\$",
+        "#": "\\#",
+        "{": "\\{",
+        "}": "\\}",
+        "~": "\\textasciitilde{}",
+        "^": "\\textasciicircum{}",
+        "\\": "\\textbackslash{}",
+    }
+
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+
+    return text
 
 
 def format_definitions_section(definitions: Dict[str, Dict[str, Any]], language: str) -> str:
@@ -129,24 +166,57 @@ def format_definitions_section(definitions: Dict[str, Dict[str, Any]], language:
     for word in sorted_words:
         def_data = definitions[word]
 
-        # Get the formatted definition from the definition data
-        formatted_def = def_data.get("formatted_definition", f"{word}: No definition available")
+        # Add the main definitions
+        defs = def_data.get("definitions", [])
 
-        # Use bold for the headword
-        formatted_def = formatted_def.replace(f"**{word}**", f"\\textbf{{{word}}}")
+        # Skip words with no definitions
+        if not defs or defs == ["No definition available"]:
+            continue
 
+        main_def = defs[0]  # Limit to first definition only - no ellipses
+
+        # Safely escape any special characters
+        main_def = escape_latex_special_chars(main_def)
+
+        # Format with bold word (smaller) and definition (in smaller font)
+        formatted_def = {"word": word, "definition": main_def}
         formatted_defs.append(formatted_def)
 
-    # Join all definitions
-    all_defs = "\n\n".join(formatted_defs)
+    # Group definitions into three columns
+    columns = []
+    col_size = len(formatted_defs) // 3 + (1 if len(formatted_defs) % 3 > 0 else 0)
 
-    # Wrap in a definition section with two columns
+    for i in range(3):
+        start = i * col_size
+        end = min(start + col_size, len(formatted_defs))
+        if start < len(formatted_defs):
+            columns.append(formatted_defs[start:end])
+
+    # Create the definitions table (now without borders)
+    table_rows = []
+    max_rows = max(len(column) for column in columns) if columns else 0
+
+    for row in range(max_rows):
+        row_cells = []
+        for col in range(3):
+            if col < len(columns) and row < len(columns[col]):
+                word = columns[col][row]["word"]
+                definition = columns[col][row]["definition"]
+                cell = f"\\small\\textbf{{{word}}} & \\scriptsize\\textit{{{definition}}}"
+            else:
+                cell = " & "
+            row_cells.append(cell)
+        table_rows.append(" & ".join(row_cells))
+
+    table_content = "\\\\\n".join(table_rows)
+
+    # Return the definitions section with a borderless table
     return rf"""
-\begin{{tcolorbox}}[breakable, colback=white, colframe=black, title=Definitions]
-\begin{{multicols}}{{2}}
-{all_defs}
-\end{{multicols}}
-\end{{tcolorbox}}
+\begin{{center}}
+\begin{{tabular}}{{p{{0.12\textwidth}}p{{0.17\textwidth}}p{{0.12\textwidth}}p{{0.17\textwidth}}p{{0.12\textwidth}}p{{0.17\textwidth}}}}
+{table_content} \\\\
+\end{{tabular}}
+\end{{center}}
 """
 
 
@@ -165,67 +235,80 @@ def format_page_latex(text: str, definitions: Dict[str, Dict[str, Any]], languag
     text_section = format_text_section(text, language)
     definitions_section = format_definitions_section(definitions, language)
 
-    return f"{text_section}\n{definitions_section}"
+    # Create a vertically divided page with text on top and definitions on bottom
+    # Using a simple horizontal rule as divider with minimal spacing
+    return f"""
+% Text section (top half)
+{text_section}
+
+% Simple divider
+\\vspace{{0.2cm}}
+\\noindent\\rule{{\\textwidth}}{{0.4pt}}
+\\vspace{{0.2cm}}
+
+% Definitions section (bottom half)
+{definitions_section}
+"""
 
 
 def create_paginated_latex(
-    text: str, language: str = None, lines_per_page: int = 10, include_definitions: bool = True
+    text: str, definitions: Dict[str, Dict[str, Any]], language: str, lines_per_page: int = 10
 ) -> str:
     """
-    Create a complete LaTeX document with paginated text and definitions.
+    Create a paginated LaTeX document from text and definitions.
 
     Args:
-        text: Source text in Latin or Greek
-        language: 'latin' or 'greek' (if None, auto-detect)
-        lines_per_page: Number of text lines per page
-        include_definitions: Whether to include definitions
+        text: The complete text
+        definitions: Dictionary of word definitions
+        language: 'latin' or 'greek'
+        lines_per_page: Number of lines per page
 
     Returns:
         Complete LaTeX document
     """
-    # Import here to avoid circular imports
-    from autocom.core.text import detect_language, get_definition_for_language, get_words_from_text
-
-    # Detect language if not specified
-    if language is None:
-        language = detect_language(text)
+    # Start with the header
+    header = format_latex_header()
+    content = []
 
     # Split text into pages
     pages = split_text_into_pages(text, lines_per_page)
 
-    # Generate LaTeX for each page
-    latex_pages = []
-    for page_text in pages:
-        if include_definitions:
-            # Get all words in this page
-            words = get_words_from_text(page_text, language)
+    # Process each page
+    for i, page_text in enumerate(pages):
+        # Extract words from this page of text
+        page_words = extract_words(page_text, language)
 
-            # Get definitions for all words
-            definitions = {}
-            for word in words:
-                definition = get_definition_for_language(word, language)
-                # Ensure formatted_definition is present
-                if "formatted_definition" not in definition:
-                    formatted_def = f"**{word}** - " + ", ".join(
-                        definition.get("definitions", ["No definition available"])
-                    )
-                    definition["formatted_definition"] = formatted_def
-                definitions[word] = definition
+        # Create a dictionary of definitions just for this page
+        page_defs = {}
+        for word in page_words:
+            word_lower = word.lower()
+            if word_lower in definitions and definitions[word_lower].get("definitions"):
+                page_defs[word_lower] = definitions[word_lower]
 
-            # Generate LaTeX for this page
-            page_latex = format_page_latex(page_text, definitions, language)
-        else:
-            # Only include the text section
-            page_latex = format_text_section(page_text, language)
+        # Format this page with text and its definitions
+        page_content = format_page_latex(page_text, page_defs, language)
+        content.append(page_content)
 
-        latex_pages.append(page_latex)
+        # Add page break between pages (except for the last page)
+        if i < len(pages) - 1:
+            content.append("\\newpage")
 
-    # Combine all pages with page breaks
-    page_separator = "\n\\newpage\n"
-    all_pages = page_separator.join(latex_pages)
-
-    # Create complete document
-    header = format_latex_header()
+    # End with the footer
     footer = format_latex_footer()
 
-    return f"{header}\n{all_pages}\n{footer}"
+    # Join everything together
+    return f"{header}\n\n{''.join(content)}\n\n{footer}"
+
+
+def extract_words(text: str, language: str) -> List[str]:
+    """
+    Extract all words from a text.
+
+    Args:
+        text: Text to extract words from
+        language: 'latin' or 'greek'
+
+    Returns:
+        List of words
+    """
+    return list(get_words_from_text(text, language))

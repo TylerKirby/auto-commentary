@@ -1,127 +1,66 @@
-# AutoCom: Automatic Commentary Generator
+# Auto-Commentary
 
-A Python package for generating automatic commentaries for Latin and Greek texts, making classical texts more accessible for students and teachers.
+A tool to automatically generate commentaries for Latin and Greek texts. The tool produces nicely formatted PDF files with the original text and word definitions.
 
 ## Features
 
-- Support for both Latin and Greek texts
-- Automatic language detection
-- Word definitions with grammatical analysis from various APIs and dictionaries
-- Text formatting with line numbers and pagination
-- LaTeX output for professional-looking commentaries
-- Modular design for easy extension to other languages
+- Automatically detects Latin or Greek text
+- Generates definitions for each word
+- Creates a beautifully formatted PDF with proper pagination
+- Latin text at the top, definitions at the bottom
+- Customizable lines per page
 
-## Installation
+## Requirements
 
-### Basic Installation
+- Python 3.6+
+- LaTeX (with pdflatex)
+- Required LaTeX packages: inputenc, fontenc, multicol, geometry, fancyhdr, xcolor, graphicx
 
-```bash
-pip install autocom
-```
+## Quick Start
 
-### With Advanced Features
-
-For enhanced NLP processing (lemmatization, morphological analysis), install with the "advanced" extras:
+The easiest way to use the tool is with the provided shell script:
 
 ```bash
-pip install autocom[advanced]
+./generate_commentary.sh examples/sample_latin_excerpt.txt
 ```
 
-This will install additional dependencies like CLTK for advanced language processing.
+This will:
+1. Process the Latin text in the file
+2. Generate definitions for each word
+3. Create a LaTeX file in the `output` directory
+4. Compile the LaTeX file to PDF
+5. Open the PDF file (on macOS)
 
-## Project Structure
-
-The package is organized in a modular way to clearly separate language-specific functionality from core components:
-
-```
-autocom/
-├── core/
-│   ├── __init__.py
-│   ├── constants.py
-│   ├── layout.py
-│   ├── text.py
-│   └── utils.py
-├── languages/
-│   ├── __init__.py
-│   ├── latin/
-│   │   ├── __init__.py
-│   │   ├── definitions.py
-│   │   └── parsers.py
-│   └── greek/
-│       ├── __init__.py
-│       ├── definitions.py
-│       └── parsers.py
-├── __init__.py
-└── cli.py
-```
-
-## Usage
-
-### Basic Usage
-
-```python
-from autocom import generate_commentary
-
-# Generate a Latin commentary
-latin_text = "Gallia est omnis divisa in partes tres"
-latin_commentary = generate_commentary(latin_text)  # Language auto-detected
-
-# Generate a Greek commentary
-greek_text = "Πάντες ἄνθρωποι τοῦ εἰδέναι ὀρέγονται φύσει"
-greek_commentary = generate_commentary(greek_text)  # Language auto-detected
-```
-
-### Command Line Interface
+You can specify the number of lines per page as a second argument:
 
 ```bash
-# Generate commentary from a text file
-autocom my_latin_text.txt --output commentary.tex
-
-# Specify language explicitly
-autocom my_greek_text.txt --language greek --output commentary.tex
-
-# Customize output format
-autocom my_text.txt --format markdown --output commentary.md
+./generate_commentary.sh examples/sample_latin_excerpt.txt 8
 ```
 
-## API Reference
+## Manual Usage
 
-### Core Functions
+If you prefer to run the steps manually:
 
-- `detect_language(text)` - Detect whether text is Latin or Greek
-- `clean_text(text, language)` - Clean and normalize text for the specified language
-- `generate_commentary(text, language, output_format)` - Generate a full commentary
+1. Generate the LaTeX file:
+   ```bash
+   python -m autocom.cli examples/sample_latin_excerpt.txt --output=output/my_commentary.tex --lines-per-page=10 --show-language-stats
+   ```
 
-### Language-Specific Modules
+2. Compile the LaTeX file:
+   ```bash
+   pdflatex -interaction=nonstopmode -output-directory=output output/my_commentary.tex
+   ```
 
-#### Latin
+3. Open the PDF:
+   ```bash
+   open output/my_commentary.pdf
+   ```
 
-- `autocom.languages.latin.get_definition(word)` - Get definition for a Latin word
-- `autocom.languages.latin.extract_latin_words(text)` - Extract Latin words from text
+## Layout Customization
 
-#### Greek
-
-- `autocom.languages.greek.get_definition(word)` - Get definition for a Greek word
-- `autocom.languages.greek.extract_greek_words(text)` - Extract Greek words from text
-
-## Examples
-
-See the `examples/` directory for complete examples:
-
-- `latin_definitions_example.py` - Demonstrates Latin word definitions
-- `greek_text_example.py` - Demonstrates Greek text processing
-- `multiple_languages_example.py` - Shows how to work with both languages
-
-## Dependencies
-
-- `requests` - For API interactions
-- `unicodedata2` - For Unicode normalization of text
-- `cltk` (optional) - For advanced language processing
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+The layout can be customized by modifying the `autocom/core/layout.py` file. Current layout features:
+- Large Latin text at the top
+- Simple horizontal divider
+- Compact definitions table at the bottom
+- Nice margins (0.75 inches)
+- Bold headwords with smaller italic definitions

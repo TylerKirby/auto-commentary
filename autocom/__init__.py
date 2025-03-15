@@ -72,7 +72,7 @@ def generate_commentary(
     # Generate the commentary
     if output_format == "latex":
         return create_paginated_latex(
-            clean_text_result, definitions=definitions, language=language, lines_per_page=lines_per_page
+            clean_text_result, language=language, lines_per_page=lines_per_page, include_definitions=include_definitions
         )
 
     # Other formats could be implemented here

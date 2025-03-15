@@ -46,8 +46,10 @@ def test_format_latex_header():
     assert "\\documentclass" in header
     assert "\\usepackage[utf8]{inputenc}" in header
     assert "\\begin{document}" in header
-    assert "\\setotherlanguage[variant=ancient]{greek}" in header
-    assert "\\setotherlanguage{latin}" in header
+    assert "\\usepackage[letterpaper, margin=0.75in]{geometry}" in header
+    assert "\\newenvironment{latin}{\\large\\linespread{1.5}\\selectfont}{}" in header
+    assert "\\usepackage{xcolor}" in header
+    assert "\\usepackage{graphicx}" in header
 
 
 def test_format_latex_footer():
@@ -65,9 +67,9 @@ def test_format_text_section_latin():
     assert "\\begin{latin}" in result
     assert latin_text in result
     assert "\\end{latin}" in result
-    assert "\\begin{tcolorbox}" in result
-    assert "title=Text" in result
-    assert "\\end{tcolorbox}" in result
+    # No more tcolorbox
+    assert "\\begin{tcolorbox}" not in result
+    assert "title=Text" not in result
 
 
 def test_format_text_section_greek():
@@ -75,40 +77,45 @@ def test_format_text_section_greek():
     greek_text = "Πάντες ἄνθρωποι"
     result = format_text_section(greek_text, "greek")
 
-    assert "\\begin{greek}" in result
+    # Greek text is now formatted differently without a dedicated environment
+    assert "\\large" in result
     assert greek_text in result
-    assert "\\end{greek}" in result
-    assert "\\begin{tcolorbox}" in result
-    assert "title=Text" in result
-    assert "\\end{tcolorbox}" in result
+    # No more greek environment or tcolorbox
+    assert "\\begin{greek}" not in result
+    assert "\\begin{tcolorbox}" not in result
 
 
 def test_format_definitions_section():
     """Test formatting definitions section in LaTeX."""
     definitions = {
-        "word1": {"formatted_definition": "**word1** - Definition 1", "part_of_speech": "noun"},
-        "word2": {"formatted_definition": "**word2** - Definition 2", "part_of_speech": "verb"},
+        "word1": {"definitions": ["Definition 1"], "part_of_speech": "noun"},
+        "word2": {"definitions": ["Definition 2"], "part_of_speech": "verb"},
     }
 
     result = format_definitions_section(definitions, "latin")
 
-    assert "\\begin{tcolorbox}" in result
-    assert "title=Definitions" in result
-    assert "\\begin{multicols}{2}" in result
-    assert "\\textbf{word1}" in result
-    assert "\\textbf{word2}" in result
-    assert "Definition 1" in result
-    assert "Definition 2" in result
-    assert "\\end{multicols}" in result
-    assert "\\end{tcolorbox}" in result
+    # Using tabular layout instead of tcolorbox and multicols
+    assert "\\begin{center}" in result
+    assert "\\begin{tabular}" in result
+    assert "\\small\\textbf{word1}" in result
+    assert "\\small\\textbf{word2}" in result
+    assert "\\scriptsize\\textit{Definition 1}" in result
+    assert "\\scriptsize\\textit{Definition 2}" in result
+    assert "\\end{tabular}" in result
+    assert "\\end{center}" in result
+
+    # Old formatting no longer used
+    assert "\\begin{tcolorbox}" not in result
+    assert "title=Definitions" not in result
+    assert "\\begin{multicols}" not in result
 
 
 def test_format_page_latex():
     """Test formatting a complete page in LaTeX."""
     text = "Lorem ipsum dolor sit amet"
     definitions = {
-        "Lorem": {"formatted_definition": "**Lorem** - First word", "part_of_speech": "noun"},
-        "ipsum": {"formatted_definition": "**ipsum** - Second word", "part_of_speech": "noun"},
+        "Lorem": {"definitions": ["First word"], "part_of_speech": "noun"},
+        "ipsum": {"definitions": ["Second word"], "part_of_speech": "noun"},
     }
 
     result = format_page_latex(text, definitions, "latin")
@@ -116,30 +123,33 @@ def test_format_page_latex():
     # Check that both sections are included
     assert "\\begin{latin}" in result
     assert text in result
-    assert "\\textbf{Lorem}" in result
-    assert "\\textbf{ipsum}" in result
-    assert "First word" in result
-    assert "Second word" in result
+
+    # Check for definitions in the tabular format
+    assert "\\small\\textbf{Lorem}" in result
+    assert "\\small\\textbf{ipsum}" in result
+    assert "\\scriptsize\\textit{First word}" in result
+    assert "\\scriptsize\\textit{Second word}" in result
+
+    # Check for divider
+    assert "\\noindent\\rule{\\textwidth}{0.4pt}" in result
 
 
-@patch("autocom.core.text.get_definition_for_language")
-@patch("autocom.core.text.get_words_from_text")
-@patch("autocom.core.text.detect_language")
-def test_create_paginated_latex(mock_detect, mock_get_words, mock_get_def):
+@patch("autocom.core.layout.extract_words")
+def test_create_paginated_latex(mock_extract_words):
     """Test creating a complete paginated LaTeX document."""
     # Setup mocks
-    mock_detect.return_value = "latin"
-    mock_get_words.return_value = {"word1", "word2"}
-    mock_get_def.side_effect = lambda word, lang: {
-        "lemma": word,
-        "definitions": [f"Definition of {word}"],
-        "formatted_definition": f"**{word}** - Definition of {word}",
-    }
+    mock_extract_words.side_effect = lambda text, lang: ["word1", "word2"]
 
     text = "Line 1\nLine 2\nLine 3\nLine 4"
 
-    # Call with explicit language
-    result = create_paginated_latex(text, language="latin", lines_per_page=2, include_definitions=True)
+    # Create some sample definitions
+    definitions = {
+        "word1": {"definitions": ["Definition of word1"]},
+        "word2": {"definitions": ["Definition of word2"]},
+    }
+
+    # Call with explicit language and definitions
+    result = create_paginated_latex(text=text, definitions=definitions, language="latin", lines_per_page=2)
 
     # Verify basic structure
     assert "\\documentclass" in result
@@ -159,34 +169,31 @@ def test_create_paginated_latex(mock_detect, mock_get_words, mock_get_def):
     # Verify pagination
     assert "\\newpage" in result
 
-    # Verify mocks were called correctly
-    mock_detect.assert_not_called()  # Language was explicitly specified
-    assert mock_get_words.call_count == 2  # Called for each page
-    assert mock_get_def.call_count >= 2  # Called for each word
+    # Verify mock was called correctly
+    assert mock_extract_words.call_count == 2  # Called for each page
 
 
-@patch("autocom.core.text.get_definition_for_language")
-@patch("autocom.core.text.get_words_from_text")
-@patch("autocom.core.text.detect_language")
-def test_create_paginated_latex_autodetect(mock_detect, mock_get_words, mock_get_def):
-    """Test creating LaTeX document with auto-detected language."""
+@patch("autocom.core.layout.extract_words")
+def test_create_paginated_latex_autodetect(mock_extract_words):
+    """Test creating LaTeX document with auto-detected language (simulated)."""
     # Setup mocks
-    mock_detect.return_value = "greek"
-    mock_get_words.return_value = {"word1", "word2"}
-    mock_get_def.side_effect = lambda word, lang: {
-        "lemma": word,
-        "definitions": [f"Definition of {word}"],
-        "formatted_definition": f"**{word}** - Definition of {word}",
-    }
+    mock_extract_words.side_effect = lambda text, lang: ["word1", "word2"]
 
     text = "Sample text"
 
-    # Call with auto-detection
-    result = create_paginated_latex(text, language=None, lines_per_page=10, include_definitions=False)
+    # Create some sample definitions
+    definitions = {
+        "word1": {"definitions": ["Definition of word1"]},
+        "word2": {"definitions": ["Definition of word2"]},
+    }
+
+    # In practice, the CLI would detect the language first, then pass it to create_paginated_latex
+    # So we simulate that here by passing 'greek' directly (as if it was detected)
+    result = create_paginated_latex(text=text, definitions=definitions, language="greek", lines_per_page=10)
 
     # Verify basic structure
     assert "\\documentclass" in result
     assert "Sample text" in result
 
-    # Verify language detection was called
-    mock_detect.assert_called_once_with(text)
+    # Verify Greek specific formatting
+    assert "\\large Sample text" in result  # Greek uses \large directly instead of latin environment
