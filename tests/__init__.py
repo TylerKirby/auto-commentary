@@ -1,1 +1,3 @@
-"""Test suite for autocom."""
+"""
+Tests package.
+"""

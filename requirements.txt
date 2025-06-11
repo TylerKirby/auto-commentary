@@ -1,6 +1,9 @@
 cltk>=1.1.6
 requests>=2.28.2
 tqdm>=4.65.0
+pydantic-ai>=0.0.14
+langdetect>=1.0.9
+unicodedata2>=15.1.0
 
 # Whitaker's Words installation - try one of these options:
 # Option 1 (HTTPS) - Default:

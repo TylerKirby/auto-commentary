@@ -1,0 +1,98 @@
+name: Code Quality & Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-lint-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-lint-
+
+    - name: Create virtual environment
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        echo "Virtual environment created and activated"
+
+    - name: Install dependencies
+      run: |
+        source venv/bin/activate
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install linting tools
+      run: |
+        source venv/bin/activate
+        pip install black>=23.0.0 isort>=5.12.0 flake8>=6.0.0 mypy>=1.5.0
+
+    - name: Check code formatting with Black
+      run: |
+        source venv/bin/activate
+        black --check --line-length=120 --diff src/ tests/
+
+    - name: Check import sorting with isort
+      run: |
+        source venv/bin/activate
+        isort --check-only --diff --line-length=120 --profile=black src/ tests/
+
+    - name: Check PEP 8 compliance with flake8
+      run: |
+        source venv/bin/activate
+        flake8 --max-line-length=120 --extend-ignore=E203,W503 src/ tests/
+
+    - name: Type checking with mypy
+      run: |
+        source venv/bin/activate
+        mypy --ignore-missing-imports --follow-imports=skip src/
+      continue-on-error: true  # Type checking is encouraged but not mandatory
+
+  format-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Create virtual environment and install tools
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        python -m pip install --upgrade pip
+        pip install black>=23.0.0 isort>=5.12.0
+
+    - name: Auto-format suggestion (dry run)
+      run: |
+        source venv/bin/activate
+        echo "## Code Formatting Suggestions" >> $GITHUB_STEP_SUMMARY
+        echo "If formatting issues are found, run these commands locally:" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "source venv/bin/activate" >> $GITHUB_STEP_SUMMARY
+        echo "black --line-length=120 src/ tests/" >> $GITHUB_STEP_SUMMARY
+        echo "isort --line-length=120 --profile=black src/ tests/" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY 
