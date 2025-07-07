@@ -30,4 +30,7 @@ class LatinParsingTools:
 
     def get_lemma(self, word: str) -> str:
         """Get the lemma of a word."""
-        return self.lemmatizer.lemmatize(word)
+        try:
+            return self.lemmatizer.lemmatize([word])[0][1]
+        except Exception as e:
+            raise e
