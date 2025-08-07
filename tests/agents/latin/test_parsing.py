@@ -1,3 +1,5 @@
+"""Test the LatinParsingTools class."""
+
 import pytest
 
 from src.agents.latin.parsing import LatinParsingTools
