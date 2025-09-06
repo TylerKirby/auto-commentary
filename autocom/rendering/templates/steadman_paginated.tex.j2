@@ -87,7 +87,11 @@
 
 % Glossary for ONLY this page's words
 \begin{center}
-\large\textbf{Glossary{% if page.number %} - Page {{ page.number }}{% endif %}{% if page.lines and page.lines|map(attribute='number')|list|select %} (Lines {% for line in page.lines if line.number %}{{ line.number }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}}
+\large\textbf{Glossary{% if page.number %} - Page {{ page.number }}{% endif %}
+{% if page.lines and page.lines|map(attribute='number')|list|select %}
+ (Lines {% for line in page.lines if line.number %}{{ line.number }}{% if not loop.last %}, {% endif %}{% endfor %})
+{% endif %}
+}
 \end{center}
 
 \begin{multicols}{2}

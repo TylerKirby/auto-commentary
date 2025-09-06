@@ -16,12 +16,18 @@ from autocom.core.models import Line, Token
 
 
 def normalize_text(text: str) -> str:
-    """NFC normalize and collapse excessive whitespace."""
+    """NFC normalize and collapse excessive whitespace while preserving line breaks."""
     if not text:
         return ""
     normalized = unicodedata.normalize("NFC", text)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized
+    # Preserve newlines but collapse other whitespace within lines
+    lines = normalized.split('\n')
+    normalized_lines = []
+    for line in lines:
+        # Collapse spaces and tabs within each line, but keep the line structure
+        normalized_line = re.sub(r"[ \t]+", " ", line).strip()
+        normalized_lines.append(normalized_line)
+    return '\n'.join(normalized_lines)
 
 
 def detect_language(text: str) -> str:

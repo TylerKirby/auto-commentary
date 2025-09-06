@@ -5,6 +5,7 @@
 \usepackage{multicol}
 \usepackage{fancyhdr}
 \usepackage{xcolor}
+\usepackage{setspace}
 
 % Greek character handling - basic approach
 \DeclareUnicodeCharacter{03B1}{\ensuremath{\alpha}}
@@ -45,16 +46,20 @@
 \DeclareUnicodeCharacter{0306}{}
 \DeclareUnicodeCharacter{0308}{}
 
-% Page setup
-\geometry{letterpaper, margin=0.75in}
+% Page setup - slightly larger margins for readability
+\geometry{letterpaper, margin=1in}
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[C]{{ "{{" }}{% if doc.metadata.title %}{{ doc.metadata.title }}{% else %}Commentary{% endif %}{{ "}}" }}
 \fancyfoot[C]{\thepage}
 
-% Custom formatting
+% Custom formatting for text-with-glossary layout
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{6pt}
+\setlength{\parskip}{0.5em}
+
+% Define styles for text and glossary
+\newcommand{\latintext}[1]{\textbf{#1}}
+\newcommand{\glossaryentry}[1]{\small #1}
 
 \begin{document}
 
@@ -66,43 +71,40 @@
 \vspace{1em}
 {% endif %}
 
-% Render each page separately with its own glossary
+% Render each page with interlinear format
 {% for page in doc.pages %}
 
 {% if not loop.first %}
 \newpage
 {% endif %}
 
-% Text for this page
+% Page header
+\begin{center}
+\textbf{Page {{ page.number }}{% if page.lines %} (Lines {% for line in page.lines if line.number %}{{ line.number }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}}
+\end{center}
+\vspace{0.5em}
+
+% Text followed by same-page glossary
 {% for line in page.lines %}
-\noindent
-{% if line.number %}\textbf{{ "{{" }}{{ line.number }}{{ "}}" }} {% endif %}
-{{ line.text }}
-\\[0.5em]
+{% if line.number %}\textbf{{ "{{" }}{{ line.number }}{{ "}}" }} {% endif %}\latintext{{ "{" }}{{ line.text }}{{ "}" }}\\
 {% endfor %}
 
 \vspace{1em}
-\hrule
-\vspace{1em}
 
-% Glossary for ONLY this page's words
-\begin{center}
-\large\textbf{Glossary{% if page.number %} - Page {{ page.number }}{% endif %}{% if page.lines and page.lines|map(attribute='number')|list|select %} (Lines {% for line in page.lines if line.number %}{{ line.number }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}}
-\end{center}
-
-\begin{multicols}{2}
+% Glossary for this page
 {% set page_glossed_words = [] %}
+\textbf{Glossary:}\\
 {% for line in page.lines %}
 {% for token in line.tokens %}
-{% if token.gloss and token.analysis and token.analysis.lemma not in page_glossed_words %}
-{% set _ = page_glossed_words.append(token.analysis.lemma) %}
-
-\textbf{{ "{" }}{{ token.analysis.lemma }}{{ "}" }}{% if token.analysis.pos_labels %} ({{ token.analysis.pos_labels[0] }}){% endif %}: {% if token.gloss.best %}{{ token.gloss.best }}{% else %}definition not found{% endif %}
-
+{% if token.gloss and token.analysis and token.analysis.lemma and not token.is_punct %}
+{% set lemma_key = token.analysis.lemma | lower %}
+{% if lemma_key not in page_glossed_words %}
+{% set _ = page_glossed_words.append(lemma_key) %}
+\glossaryentry{{ "{" }}\textbf{{ "{{" }}{{ token.analysis.lemma }}{{ "}}" }}: {{ token.gloss.best if token.gloss.best else "definition not found" }}{{ "}" }}\\
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endfor %}
-\end{multicols}
 
 {% endfor %}
 
