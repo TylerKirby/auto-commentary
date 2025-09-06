@@ -6,6 +6,45 @@
 \usepackage{fancyhdr}
 \usepackage{xcolor}
 
+% Greek character handling - basic approach
+\DeclareUnicodeCharacter{03B1}{\ensuremath{\alpha}}
+\DeclareUnicodeCharacter{03B2}{\ensuremath{\beta}}
+\DeclareUnicodeCharacter{03B3}{\ensuremath{\gamma}}
+\DeclareUnicodeCharacter{03B4}{\ensuremath{\delta}}
+\DeclareUnicodeCharacter{03B5}{\ensuremath{\epsilon}}
+\DeclareUnicodeCharacter{03B6}{\ensuremath{\zeta}}
+\DeclareUnicodeCharacter{03B7}{\ensuremath{\eta}}
+\DeclareUnicodeCharacter{03B8}{\ensuremath{\theta}}
+\DeclareUnicodeCharacter{03B9}{\ensuremath{\iota}}
+\DeclareUnicodeCharacter{03BA}{\ensuremath{\kappa}}
+\DeclareUnicodeCharacter{03BB}{\ensuremath{\lambda}}
+\DeclareUnicodeCharacter{03BC}{\ensuremath{\mu}}
+\DeclareUnicodeCharacter{03BD}{\ensuremath{\nu}}
+\DeclareUnicodeCharacter{03BE}{\ensuremath{\xi}}
+\DeclareUnicodeCharacter{03BF}{\ensuremath{o}}
+\DeclareUnicodeCharacter{03C0}{\ensuremath{\pi}}
+\DeclareUnicodeCharacter{03C1}{\ensuremath{\rho}}
+\DeclareUnicodeCharacter{03C2}{\ensuremath{\varsigma}}
+\DeclareUnicodeCharacter{03C3}{\ensuremath{\sigma}}
+\DeclareUnicodeCharacter{03C4}{\ensuremath{\tau}}
+\DeclareUnicodeCharacter{03C5}{\ensuremath{\upsilon}}
+\DeclareUnicodeCharacter{03C6}{\ensuremath{\phi}}
+\DeclareUnicodeCharacter{03C7}{\ensuremath{\chi}}
+\DeclareUnicodeCharacter{03C8}{\ensuremath{\psi}}
+\DeclareUnicodeCharacter{03C9}{\ensuremath{\omega}}
+% Handle common diacritics by ignoring them (basic fallback)
+\DeclareUnicodeCharacter{0313}{}
+\DeclareUnicodeCharacter{0314}{}
+\DeclareUnicodeCharacter{0341}{}
+\DeclareUnicodeCharacter{0342}{}
+\DeclareUnicodeCharacter{0300}{}
+\DeclareUnicodeCharacter{0301}{}
+\DeclareUnicodeCharacter{0302}{}
+\DeclareUnicodeCharacter{0303}{}
+\DeclareUnicodeCharacter{0304}{}
+\DeclareUnicodeCharacter{0306}{}
+\DeclareUnicodeCharacter{0308}{}
+
 % Page setup
 \geometry{letterpaper, margin=0.75in}
 \pagestyle{fancy}
