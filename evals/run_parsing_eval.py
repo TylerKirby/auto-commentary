@@ -30,7 +30,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 def _import_tools():
     # Local import to satisfy environment path setup before import
-    from src.agents.latin.parsing import LatinParsingTools as _LatinParsingTools  # noqa: WPS433
+    from src.agents.latin.parsing import (
+        LatinParsingTools as _LatinParsingTools,  # noqa: WPS433
+    )
 
     return _LatinParsingTools
 
@@ -45,6 +47,10 @@ class TokenEvalResult:
     pos: List[str]
     definitions: List[str]
     macronized: str
+    lemma_source: str
+    pos_source: str
+    defs_source: str
+    macron_source: str
     elapsed_ms: float
     had_error: bool
     error_message: Optional[str]
@@ -98,6 +104,12 @@ def evaluate_tokens(
     macron_changed = 0
     errors = 0
 
+    # Source usage counters
+    lemma_source_counts = {"spacy": 0, "cltk": 0}
+    pos_source_counts = {"spacy": 0, "morpheus": 0, "none": 0}
+    defs_source_counts = {"lewis_short": 0, "whitaker": 0, "none": 0}
+    macron_source_counts = {"collatinus": 0, "none": 0}
+
     for tok in tokens:
         start = time.perf_counter()
         error_message: Optional[str] = None
@@ -105,13 +117,65 @@ def evaluate_tokens(
         pos: List[str] = []
         defs: List[str] = []
         macron = tok
+        lemma_source = "cltk"
+        pos_source = "none"
+        defs_source = "none"
+        macron_source = "none"
         had_error = False
         try:
+            # Determine lemma and source
+            if getattr(tools, "_prefer_spacy", False) and getattr(tools, "_spacy_nlp", None) is not None:
+                try:
+                    _doc = tools._spacy_nlp(tok)  # type: ignore[attr-defined]
+                    _spacy_lemma = _doc[0].lemma_ if _doc and len(_doc) > 0 else ""
+                    if isinstance(_spacy_lemma, str) and _spacy_lemma.strip():
+                        lemma_source = "spacy"
+                except Exception:
+                    lemma_source = "cltk"
             lemma = tools.get_lemma(tok)
+            lemma_source_counts[lemma_source] = lemma_source_counts.get(lemma_source, 0) + 1
+
+            # Determine POS and source
             if enable_pos:
+                if getattr(tools, "_prefer_spacy", False) and getattr(tools, "_spacy_nlp", None) is not None:
+                    try:
+                        _docp = tools._spacy_nlp(tok)  # type: ignore[attr-defined]
+                        if _docp and len(_docp) > 0:
+                            _upos = _docp[0].pos_ or ""
+                            _feats = str(_docp[0].morph) if getattr(_docp[0], "morph", None) is not None else ""
+                            _label = _upos if not _feats else (f"{_upos}: {_feats}" if _upos else _feats)
+                            if _label:
+                                pos_source = "spacy"
+                    except Exception:
+                        pass
                 pos = tools.get_pos(tok)
+                if pos and pos_source != "spacy":
+                    pos_source = "morpheus"
+                if not pos:
+                    pos_source = "none"
+                pos_source_counts[pos_source] = pos_source_counts.get(pos_source, 0) + 1
+
+            # Determine definitions and source
+            try:
+                ls_defs_probe = tools._lookup_lewis_short(lemma or tok, max_defs)  # type: ignore[attr-defined]
+            except Exception:
+                ls_defs_probe = []
             defs = tools.get_definition(lemma or tok, max_senses=max_defs)
+            if ls_defs_probe:
+                defs_source = "lewis_short"
+            elif defs:
+                defs_source = "whitaker"
+            else:
+                defs_source = "none"
+            defs_source_counts[defs_source] = defs_source_counts.get(defs_source, 0) + 1
+
+            # Determine macronization and source
             macron = tools.get_macronization(lemma or tok)
+            if macron and macron != tok:
+                macron_source = "collatinus"
+            else:
+                macron_source = "none"
+            macron_source_counts[macron_source] = macron_source_counts.get(macron_source, 0) + 1
         except Exception as exc:  # defensive: keep eval running
             had_error = True
             errors += 1
@@ -135,6 +199,10 @@ def evaluate_tokens(
                 pos=pos,
                 definitions=defs,
                 macronized=macron,
+                lemma_source=lemma_source,
+                pos_source=pos_source,
+                defs_source=defs_source,
+                macron_source=macron_source,
                 elapsed_ms=elapsed_ms,
                 had_error=had_error,
                 error_message=error_message,
@@ -154,6 +222,10 @@ def evaluate_tokens(
         "macron_changed_rate": (macron_changed / total) if total else 0.0,
         "errors": errors,
         "error_rate": (errors / total) if total else 0.0,
+        "lemma_source_counts": lemma_source_counts,
+        "pos_source_counts": pos_source_counts,
+        "defs_source_counts": defs_source_counts,
+        "macron_source_counts": macron_source_counts,
     }
     return results, metrics
 

@@ -1,0 +1,64 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{multicol}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+
+% Page setup
+\geometry{letterpaper, margin=0.75in}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{{ "{{" }}{% if doc.metadata.title %}{{ doc.metadata.title }}{% else %}Commentary{% endif %}{{ "}}" }}
+\fancyfoot[C]{\thepage}
+
+% Custom formatting
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\begin{document}
+
+% Title
+{% if doc.metadata.title %}
+\begin{center}
+\Large\textbf{{ "{{" }}{{ doc.metadata.title }}{{ "}}" }}
+\end{center}
+\vspace{1em}
+{% endif %}
+
+% Main text with line numbers
+{% for page in doc.pages %}
+{% for line in page.lines %}
+\noindent
+{% if line.number %}\textbf{{ "{{" }}{{ line.number }}{{ "}}" }} {% endif %}
+{{ line.text }}
+\\[0.5em]
+{% endfor %}
+{% endfor %}
+
+\vspace{2em}
+\hrule
+\vspace{1em}
+
+% Glossary section
+\begin{center}
+\large\textbf{Glossary}
+\end{center}
+
+\begin{multicols}{2}
+{% set glossed_words = [] %}
+{% for page in doc.pages %}
+{% for line in page.lines %}
+{% for token in line.tokens %}
+{% if token.gloss and token.analysis and token.analysis.lemma not in glossed_words %}
+{% set _ = glossed_words.append(token.analysis.lemma) %}
+\textbf{{ "{" }}{{ token.analysis.lemma }}{{ "}" }}{% if token.analysis.pos_labels %} ({{ token.analysis.pos_labels[0] }}){% endif %}: {% if token.gloss.best %}{{ token.gloss.best }}{% else %}definition not found{% endif %}
+
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+\end{multicols}
+
+\end{document}

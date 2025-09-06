@@ -1,0 +1,1 @@
+"""Processing pipeline components for text analysis and commentary generation."""
