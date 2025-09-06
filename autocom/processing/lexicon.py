@@ -14,6 +14,7 @@ import unicodedata
 from typing import Any, Dict, Iterable, List, Optional
 
 from autocom.languages.greek.lexicon import GreekLexiconService
+from autocom.languages.latin.lexicon import LatinLexicon as EnhancedLatinLexicon
 from autocom.core.models import Gloss, Line, Token
 
 
@@ -220,6 +221,13 @@ def get_lexicon_for_language(language: str, **kwargs) -> Any:
     elif language == "latin":
         max_senses = kwargs.get("max_senses", 3)
         data_dir = kwargs.get("data_dir")
-        return LatinLexicon(max_senses=max_senses, data_dir=data_dir)
+        enable_api_fallbacks = kwargs.get("enable_api_fallbacks", True)
+        api_timeout = kwargs.get("api_timeout", 3.0)
+        return EnhancedLatinLexicon(
+            max_senses=max_senses, 
+            data_dir=data_dir,
+            enable_api_fallbacks=enable_api_fallbacks,
+            api_timeout=api_timeout
+        )
     else:
         raise ValueError(f"Unsupported language: {language}")

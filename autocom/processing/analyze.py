@@ -29,24 +29,38 @@ except Exception:  # pragma: no cover - environment dependent
 class LatinAnalyzer:
     """Adapter around Latin parsing utilities for deterministic usage."""
 
-    def __init__(self, prefer_spacy: bool = True) -> None:
+    def __init__(self, prefer_spacy: bool = True, use_enhanced_lemmatizer: bool = True) -> None:
         self.tools = LatinParsingTools(prefer_spacy=prefer_spacy)
+        self.use_enhanced_lemmatizer = use_enhanced_lemmatizer
+        self._enhanced_lemmatizer = None  # Lazy initialization to avoid circular import
 
     def analyze_token(self, token: Token) -> Token:
         if token.is_punct:
             return token
+        
+        # Use enhanced lemmatizer if available
         try:
-            lemma = self.tools.get_lemma(token.text)
+            if self.use_enhanced_lemmatizer:
+                if self._enhanced_lemmatizer is None:
+                    # Lazy import to avoid circular dependency
+                    from .enhanced_lemmatizer import EnhancedLatinLemmatizer
+                    self._enhanced_lemmatizer = EnhancedLatinLemmatizer(prefer_spacy=True)
+                lemma = self._enhanced_lemmatizer.lemmatize(token.text)
+            else:
+                lemma = self.tools.get_lemma(token.text)
         except Exception:
             lemma = token.text
+            
         try:
             pos_labels = self.tools.get_pos(token.text)
         except Exception:
             pos_labels = []
+            
+        backend = "enhanced-latin-tools" if self.use_enhanced_lemmatizer else "latin-tools"
         token.analysis = Analysis(
             lemma=lemma,
             pos_labels=pos_labels,
-            backend="latin-tools",
+            backend=backend,
         )
         return token
 
@@ -65,7 +79,8 @@ def get_analyzer_for_language(language: str, **kwargs) -> Any:
         return GreekAnalyzer(prefer_cltk=prefer_cltk)
     elif language == "latin":
         prefer_spacy = kwargs.get("prefer_spacy", True)
-        return LatinAnalyzer(prefer_spacy=prefer_spacy)
+        use_enhanced_lemmatizer = kwargs.get("use_enhanced_lemmatizer", True)
+        return LatinAnalyzer(prefer_spacy=prefer_spacy, use_enhanced_lemmatizer=use_enhanced_lemmatizer)
     else:
         raise ValueError(f"Unsupported language: {language}")
 

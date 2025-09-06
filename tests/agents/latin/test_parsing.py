@@ -1,15 +1,14 @@
 """Test the LatinParsingTools class."""
 
 import pytest
-
-from src.agents.latin.parsing import LatinParsingTools
+from autocom.processing.analyze import LatinParsingTools
 
 
 @pytest.mark.parametrize(
     "word,lemma",
     [
         ("puellae", "puella"),  # noun
-        ("amantis", "amo"),  # adjective
+        ("amantis", "amo"),  # participle
         ("omnis", "omnis"),  # adjective
         ("Ciceronis", "Cicero"),  # proper noun
         ("not_a_word", "not_a_word"),  # not a word

@@ -12,23 +12,44 @@ import re
 import unicodedata
 from typing import Any, Dict, Iterable, List, Optional
 
+import requests
+
 from autocom.core.models import Gloss, Line, Token
 
 
 class LatinLexicon:
-    """Lewis & Short-backed lexicon with Whitaker fallback."""
+    """Enhanced Latin lexicon with multiple fallback layers:
+    1. Lewis & Short (primary)
+    2. Latin WordNet API (modern fallback)
+    3. Latin is Simple API (fast fallback) 
+    4. Whitaker's Words (offline fallback)
+    """
 
     def __init__(
         self,
         max_senses: int = 3,
         data_dir: Optional[str] = None,
+        enable_api_fallbacks: bool = True,
+        api_timeout: float = 3.0,
     ) -> None:
         self.max_senses = max_senses
+        self.enable_api_fallbacks = enable_api_fallbacks
+        self.api_timeout = api_timeout
+        
+        # Lewis & Short setup
         self._lewis_short_dir = data_dir or self._default_lewis_short_dir()
         self._lewis_short_cache: Dict[str, Dict[str, Any]] = {}
+        
+        # API endpoints
+        self._latin_wordnet_base = "https://latinwordnet.exeter.ac.uk/api"
+        self._latin_simple_base = "https://www.latin-is-simple.com/api"
+        
+        # Caches for API responses
+        self._api_cache: Dict[str, List[str]] = {}
+        
+        # Whitaker's Words setup
         try:  # pragma: no cover - import guard only
             from whitakers_words.parser import Parser as WhitakerParser
-
             self._whitaker: Optional[Any] = WhitakerParser()
         except Exception:  # pragma: no cover - env dependent
             self._whitaker = None
@@ -57,8 +78,22 @@ class LatinLexicon:
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
+            
+            # Handle both dict and list formats
             if isinstance(data, dict):
+                # Old format: {"headword": {...}}
                 for raw_headword, entry in data.items():
+                    if not isinstance(raw_headword, str):
+                        continue
+                    norm = self._normalize_headword_for_match(raw_headword)
+                    if norm and norm not in mapping:
+                        mapping[norm] = entry
+            elif isinstance(data, list):
+                # New format: [{"key": "headword", ...}]
+                for entry in data:
+                    if not isinstance(entry, dict) or "key" not in entry:
+                        continue
+                    raw_headword = entry["key"]
                     if not isinstance(raw_headword, str):
                         continue
                     norm = self._normalize_headword_for_match(raw_headword)
@@ -78,48 +113,67 @@ class LatinLexicon:
 
         def _add(text: str) -> None:
             cleaned = (text or "").strip()
-            if cleaned and cleaned not in senses:
+            # Clean up excessive markup and references for better readability
+            cleaned = re.sub(r'\s+', ' ', cleaned)
+            cleaned = re.sub(r'[,;]\s*$', '', cleaned)  # Remove trailing punctuation
+            if cleaned and len(cleaned) > 3 and cleaned not in senses:
                 senses.append(cleaned)
+
+        def _extract_clean_sense(raw_sense: str) -> str:
+            """Extract clean definition from potentially complex Lewis & Short markup."""
+            # Remove common Latin abbreviations and references
+            clean = re.sub(r'\b(cf\.|v\.|i\.e\.|e\.g\.)\s+[^,;.]+[,;.]?', '', raw_sense)
+            # Remove citations like "Cic. Att. 7, 21"
+            clean = re.sub(r'\b[A-Z][a-z]*\.?\s+[A-Z][a-z]*\.?\s+\d+[,\s\d]*', '', clean)
+            # Remove parenthetical references
+            clean = re.sub(r'\([^)]+\)', '', clean)
+            # Clean up excessive whitespace
+            clean = re.sub(r'\s+', ' ', clean).strip()
+            return clean
 
         if isinstance(entry, str):
             _add(entry)
             return senses[:max_senses]
-        if isinstance(entry, list):
-            for item in entry:
-                if isinstance(item, str):
-                    _add(item)
-                elif isinstance(item, dict):
-                    for k in ("gloss", "def", "sense", "shortdef"):
-                        val = item.get(k) if isinstance(item, dict) else None
-                        if isinstance(val, str):
-                            _add(val)
-                if len(senses) >= max_senses:
-                    break
-            return senses[:max_senses]
+        
         if isinstance(entry, dict):
-            for key in ("defs", "senses", "definitions", "glosses", "meanings"):
-                val = entry.get(key)
-                if isinstance(val, list):
-                    for it in val:
-                        if isinstance(it, str):
-                            _add(it)
-                        elif isinstance(it, dict):
-                            for k in ("gloss", "def", "sense", "shortdef"):
-                                sv = it.get(k)
-                                if isinstance(sv, str):
-                                    _add(sv)
-                        if len(senses) >= max_senses:
+            # Handle Lewis & Short specific structure
+            # Try "senses" field first (list of definitions)
+            if "senses" in entry and isinstance(entry["senses"], list):
+                for sense in entry["senses"][:max_senses]:
+                    if isinstance(sense, str):
+                        clean_sense = _extract_clean_sense(sense)
+                        if clean_sense:
+                            _add(clean_sense)
+            
+            # If no senses found, try "main_notes" (often contains definitions)
+            if not senses and "main_notes" in entry:
+                main_notes = entry["main_notes"]
+                if isinstance(main_notes, str):
+                    # Split on common definition separators and take first few
+                    definitions = re.split(r'[;:]\s*(?=[A-Z])', main_notes)
+                    for defn in definitions[:max_senses]:
+                        clean_defn = _extract_clean_sense(defn)
+                        if clean_defn and len(clean_defn) > 10:  # Avoid single words
+                            _add(clean_defn)
+            
+            # Fallback: try other common fields
+            if not senses:
+                for key in ("definition", "meaning", "gloss", "def"):
+                    if key in entry:
+                        val = entry[key]
+                        if isinstance(val, str):
+                            clean_val = _extract_clean_sense(val)
+                            if clean_val:
+                                _add(clean_val)
+                        elif isinstance(val, list):
+                            for item in val[:max_senses]:
+                                if isinstance(item, str):
+                                    clean_item = _extract_clean_sense(item)
+                                    if clean_item:
+                                        _add(clean_item)
+                        if senses:
                             break
-                    if senses:
-                        return senses[:max_senses]
-                if isinstance(val, str):
-                    _add(val)
-                    return senses[:max_senses]
-            for k in ("gloss", "def", "sense", "shortdef", "definition"):
-                val = entry.get(k)
-                if isinstance(val, str):
-                    _add(val)
-            return senses[:max_senses]
+        
         return senses[:max_senses]
 
     def lookup(self, lemma: str) -> List[str]:
@@ -129,13 +183,106 @@ class LatinLexicon:
         initial = norm[:1].upper()
         if not initial:
             return []
+        
+        # Try primary letter first
         mapping = self._load_lewis_short_letter(initial)
-        if not mapping:
+        if mapping:
+            entry = mapping.get(norm)
+            if entry is not None:
+                return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
+        
+        # Handle v/u variants: if looking for 'u' words, also try 'v' file
+        if initial == 'U':
+            v_mapping = self._load_lewis_short_letter('V')
+            if v_mapping:
+                entry = v_mapping.get(norm)
+                if entry is not None:
+                    return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
+        
+        # Handle v/u variants: if looking for 'v' words, also try 'u' file  
+        elif initial == 'V':
+            u_mapping = self._load_lewis_short_letter('U')
+            if u_mapping:
+                entry = u_mapping.get(norm)
+                if entry is not None:
+                    return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
+        
+        return []
+
+    def _try_latin_wordnet_api(self, lemma: str) -> List[str]:
+        """Query Latin WordNet API for definitions."""
+        if not self.enable_api_fallbacks:
             return []
-        entry = mapping.get(norm)
-        if entry is None:
+        
+        cache_key = f"wordnet:{lemma}"
+        if cache_key in self._api_cache:
+            return self._api_cache[cache_key]
+            
+        try:
+            # Latin WordNet API endpoint
+            url = f"{self._latin_wordnet_base}/lemmas/{lemma}"
+            response = requests.get(url, timeout=self.api_timeout)
+            
+            if response.status_code == 200:
+                data = response.json()
+                definitions = []
+                
+                # Extract definitions from WordNet response
+                if isinstance(data, dict) and "senses" in data:
+                    for sense in data["senses"][:self.max_senses]:
+                        if isinstance(sense, dict) and "definition" in sense:
+                            defn = sense["definition"].strip()
+                            if defn and defn not in definitions:
+                                definitions.append(defn)
+                
+                self._api_cache[cache_key] = definitions
+                return definitions
+                
+        except Exception:
+            pass
+            
+        self._api_cache[cache_key] = []
+        return []
+    
+    def _try_latin_simple_api(self, lemma: str) -> List[str]:
+        """Query Latin is Simple API for definitions."""
+        if not self.enable_api_fallbacks:
             return []
-        return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
+            
+        cache_key = f"simple:{lemma}"
+        if cache_key in self._api_cache:
+            return self._api_cache[cache_key]
+            
+        try:
+            # Latin is Simple API endpoint  
+            url = f"{self._latin_simple_base}/latin/{lemma}"
+            response = requests.get(url, timeout=self.api_timeout)
+            
+            if response.status_code == 200:
+                data = response.json()
+                definitions = []
+                
+                # Extract definitions from Latin is Simple response
+                if isinstance(data, dict):
+                    if "translations" in data and isinstance(data["translations"], list):
+                        for trans in data["translations"][:self.max_senses]:
+                            if isinstance(trans, str):
+                                defn = trans.strip()
+                                if defn and defn not in definitions:
+                                    definitions.append(defn)
+                    elif "meaning" in data:
+                        meaning = str(data["meaning"]).strip()
+                        if meaning:
+                            definitions.append(meaning)
+                
+                self._api_cache[cache_key] = definitions
+                return definitions
+                
+        except Exception:
+            pass
+            
+        self._api_cache[cache_key] = []
+        return []
 
     def fallback_definitions(self, word: str) -> List[str]:
         if self._whitaker is None:
@@ -199,9 +346,25 @@ class LatinLexicon:
         if token.is_punct:
             return token
         lemma = token.analysis.lemma if token.analysis else token.text
+        
+        # Multi-layer fallback system
+        senses = []
+        
+        # Layer 1: Lewis & Short (primary)
         senses = self.lookup(lemma)
+        
+        # Layer 2: Latin WordNet API (modern fallback)
+        if not senses:
+            senses = self._try_latin_wordnet_api(lemma)
+        
+        # Layer 3: Latin is Simple API (fast fallback)
+        if not senses:
+            senses = self._try_latin_simple_api(lemma)
+        
+        # Layer 4: Whitaker's Words (offline fallback)
         if not senses:
             senses = self.fallback_definitions(lemma)
+        
         token.gloss = Gloss(lemma=lemma, senses=senses)
         return token
 
