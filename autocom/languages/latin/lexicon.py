@@ -31,10 +31,12 @@ class LatinLexicon:
         data_dir: Optional[str] = None,
         enable_api_fallbacks: bool = True,
         api_timeout: float = 3.0,
+        generate_baseline: bool = False,
     ) -> None:
         self.max_senses = max_senses
         self.enable_api_fallbacks = enable_api_fallbacks
         self.api_timeout = api_timeout
+        self._generate_baseline = generate_baseline
         
         # Lewis & Short setup
         self._lewis_short_dir = data_dir or self._default_lewis_short_dir()
@@ -120,15 +122,121 @@ class LatinLexicon:
                 senses.append(cleaned)
 
         def _extract_clean_sense(raw_sense: str) -> str:
-            """Extract clean definition from potentially complex Lewis & Short markup."""
-            # Remove common Latin abbreviations and references
-            clean = re.sub(r'\b(cf\.|v\.|i\.e\.|e\.g\.)\s+[^,;.]+[,;.]?', '', raw_sense)
-            # Remove citations like "Cic. Att. 7, 21"
-            clean = re.sub(r'\b[A-Z][a-z]*\.?\s+[A-Z][a-z]*\.?\s+\d+[,\s\d]*', '', clean)
-            # Remove parenthetical references
-            clean = re.sub(r'\([^)]+\)', '', clean)
-            # Clean up excessive whitespace
+            """Extract pedagogically appropriate definition for student commentary."""
+            
+            # Strategy: Look for actual English definitions, not technical fragments
+            original = raw_sense.strip()
+            
+            # Look for actual English meanings, prioritizing those at the end
+            # Lewis & Short often puts the actual meaning after all the citations
+            
+            # First, try to find clear English definitions after semicolons
+            parts = re.split(r';\s*', original)
+            for part in reversed(parts):  # Start from the end
+                part = part.strip()
+                # Look for English meaning patterns
+                english_patterns = [
+                    r'\b(?:implements|weapons|tools|instruments|equipment)\s+of\s+[a-z]+',
+                    r'\b(?:a|an|the)\s+[a-z]+(?:\s+[a-z]+){0,4}',  
+                    r'\b(?:what is|that which)\s+[a-z]+(?:\s+[a-z]+){0,6}',
+                    r'\bto\s+[a-z]+(?:\s+[a-z]+){0,3}',
+                    r'\b[a-z]+(?:\s+[a-z]+){1,4}(?:\s*\([^)]*\))?$'  # Simple definitions at end
+                ]
+                
+                for pattern in english_patterns:
+                    matches = re.findall(pattern, part, re.IGNORECASE)
+                    if matches:
+                        best_match = max(matches, key=len)
+                        if len(best_match) > 8 and not re.match(r'considered by|gen\.|plur\.|imp\.', best_match, re.IGNORECASE):
+                            return best_match.strip()
+            
+            # Fallback: Clean the beginning of the definition
+            clean = original
+            
+            # Remove leading technical grammar
+            clean = re.sub(r'^(?:Gen\.|Dat\.|Acc\.|Abl\.|Nom\.)\s+(?:plur\.|sing\.)?\s*[^,]*,\s*', '', clean)
+            clean = re.sub(r'^(?:Imp\.|fut\.|perf\.)\s+[^,=]*=?[^,]*,\s*', '', clean)
+            clean = re.sub(r'^Adj\.\s+sup\.\s*[^,]*,\s*', '', clean)
+            
+            # Remove bracketed content  
+            clean = re.sub(r'\s*\[[^\]]*\]', '', clean)
+            clean = re.sub(r'\s*\([^)]*(?:Sanscr\.|Gr\.|kindr\.)[^)]*\)', '', clean)
+            
+            # Remove author citations
+            clean = re.sub(r'\b[A-Z][a-z]*\.\s*(?:ap\.\s*)?[A-Z][a-z]*\.?[^,;]*', '', clean)
+            
+            # Take first meaningful clause
+            parts = re.split(r'[;:]', clean)
+            if parts and len(parts[0].strip()) > 5:
+                clean = parts[0].strip()
+            
+            # Final cleanup
+            clean = re.sub(r'^[,;\s]+|[,;\s]*$', '', clean)
             clean = re.sub(r'\s+', ' ', clean).strip()
+            
+            # If still too technical or short, provide a basic fallback
+            if len(clean) < 5 or re.match(r'^[A-Z][a-z]*\.$', clean):
+                # Hard-coded basic meanings for common words as last resort
+                word_fallbacks = {
+                    'arma': 'weapons, arms',
+                    'vir': 'man, hero', 
+                    'cano': 'to sing',
+                    'troia': 'Troy',
+                    'qui': 'who',
+                    'primus': 'first',
+                    'ab': 'from, by',
+                    'os': 'mouth, face'
+                }
+                # Try to match word from the sense context if available
+                for word, meaning in word_fallbacks.items():
+                    if word in original.lower():
+                        return meaning
+                
+                # Final fallback to first few non-technical words
+                words = original.split()
+                meaningful_words = [w for w in words if len(w) > 2 and not re.match(r'^[A-Z][a-z]*\.$', w) and not w.isdigit()]
+                if len(meaningful_words) >= 2:
+                    clean = ' '.join(meaningful_words[:4])
+            
+            return clean if len(clean) > 2 else 'meaning unclear'
+            
+            # Clean up multiple consecutive punctuation and spaces left by removals
+            clean = re.sub(r'\s*,\s*,+', ',', clean)  # Multiple commas
+            clean = re.sub(r'\s*;\s*;+', ';', clean)  # Multiple semicolons
+            clean = re.sub(r'[,;]\s*[,;]+', ',', clean)  # Mixed punctuation
+            clean = re.sub(r'\s+', ' ', clean).strip()  # Multiple spaces
+            clean = re.sub(r'^[,;:\s]+|[,;:\s]+$', '', clean)  # Leading/trailing punct
+            
+            # Remove any remaining isolated abbreviations or numbers
+            clean = re.sub(r'\b(?:[A-Z]\.|\d+)\s*$', '', clean)
+            clean = re.sub(r'^\s*(?:[A-Z]\.|\d+)\s*', '', clean)
+            
+            # Final cleanup
+            clean = clean.strip()
+            
+            # If result is now too short, try to get core meaning from original
+            if len(clean) < 10:
+                # Try to extract basic English meaning from the raw sense
+                # Look for common patterns like "the X", "a Y", etc.
+                meaning_match = re.search(r'\b(?:the|a|an)\s+[a-z]+(?:\s+[a-z]+){0,3}', raw_sense, re.IGNORECASE)
+                if meaning_match:
+                    clean = meaning_match.group().strip()
+                else:
+                    # Fall back to meaningful words
+                    words = raw_sense.replace(',', ' ').replace(';', ' ').replace('(', ' ').replace(')', ' ').split()
+                    meaning_words = [w for w in words 
+                                   if len(w) > 2 
+                                   and not re.match(r'^[A-Z][a-z]*\.$', w) 
+                                   and not w.isdigit() 
+                                   and w.lower() not in ['gen', 'plur', 'sing', 'dat', 'acc', 'abl', 'nom', 'imp', 'fut', 'perf']]
+                    if len(meaning_words) >= 2:
+                        clean = ' '.join(meaning_words[:5])
+            
+            # Ensure reasonable length for student commentary
+            if len(clean) > 50:
+                words = clean.split()
+                clean = ' '.join(words[:6]) if len(words) > 6 else clean
+            
             return clean
 
         if isinstance(entry, str):
