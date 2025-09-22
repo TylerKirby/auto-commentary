@@ -30,10 +30,15 @@
 % Main text with line numbers
 {% for page in doc.pages %}
 {% for line in page.lines %}
+{% set line_has_content = line.text.strip() %}
+{% if line_has_content %}
 \noindent
 {% if line.number %}\textbf{{ "{{" }}{{ line.number }}{{ "}}" }} {% endif %}
-{{ line.text }}
+{{ line.text | latex_escape }}
 \\[0.5em]
+{% else %}
+\vspace{0.5em}
+{% endif %}
 {% endfor %}
 {% endfor %}
 
@@ -53,7 +58,7 @@
 {% for token in line.tokens %}
 {% if token.gloss and token.analysis and token.analysis.lemma not in glossed_words %}
 {% set _ = glossed_words.append(token.analysis.lemma) %}
-\textbf{{ "{" }}{{ token.analysis.lemma }}{{ "}" }}{% if token.analysis.pos_labels %} ({{ token.analysis.pos_labels[0] }}){% endif %}: {% if token.gloss.best %}{{ token.gloss.best }}{% else %}definition not found{% endif %}
+\textbf{{ "{" }}{{ token.analysis.lemma | latex_escape }}{{ "}" }}{% if token.analysis.pos_labels %} ({{ token.analysis.pos_labels[0] | latex_escape }}){% endif %}: {% if token.gloss.best %}{{ token.gloss.best | latex_escape }}{% else %}definition not found{% endif %}
 
 {% endif %}
 {% endfor %}

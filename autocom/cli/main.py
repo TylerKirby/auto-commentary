@@ -4,6 +4,7 @@ Command-line interface: parse, annotate, render, commentary (end-to-end).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,21 @@ from autocom.rendering.pdf import render_pdf
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 
+def _setup_logging(verbose: bool) -> None:
+    """Configure a simple logging sink for CLI progress reporting."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+
+
+@app.callback()
+def main(verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging")) -> None:
+    """Shared CLI configuration executed before subcommands."""
+    _setup_logging(verbose)
+
+
 @app.command()
 def parse(
     input_path: Path = typer.Argument(..., exists=True, readable=True),
@@ -32,8 +48,9 @@ def parse(
     lines = ingest_mod.segment_lines(norm)
     num_lines = len(lines)
     num_tokens = sum(len(line.tokens) for line in lines)
-    msg = f"Language: {detected}; Lines: {num_lines}; Tokens: {num_tokens}"
-    typer.echo(msg)
+    logger = logging.getLogger("autocom.cli.parse")
+    logger.info("Detected language: %s", detected)
+    logger.info("Lines: %s | Tokens: %s", num_lines, num_tokens)
 
 
 @app.command()
@@ -51,37 +68,48 @@ def annotate(
         help="Prefer CLTK for Greek analysis",
     ),
 ) -> None:
+    logger = logging.getLogger("autocom.cli.annotate")
+    logger.info("Reading input: %s", input_path)
     text = input_path.read_text(encoding="utf-8")
     norm, lines = ingest_mod.normalize_and_segment(text)
 
     # Auto-detect language if not specified
     detected_language = language or ingest_mod.detect_language(norm)
+    logger.info("Detected language: %s", detected_language)
 
     # Get appropriate analyzer
     if detected_language == "greek":
+        logger.info("Initializing Greek analyzer (prefer_cltk=%s)", prefer_cltk)
         analyzer = get_analyzer_for_language("greek", prefer_cltk=prefer_cltk)
         enrichment = None  # Greek enrichment not implemented yet
     else:
+        logger.info("Initializing Latin analyzer (prefer_spacy=%s)", prefer_spacy)
         analyzer = get_analyzer_for_language("latin", prefer_spacy=prefer_spacy)
         enrichment = enrich_mod.LatinEnrichment()
 
+    logger.info("Running morphological analysis on %d lines", len(lines))
     lines = analyzer.analyze(lines)
     lines = analyze_mod.disambiguate_sequence(lines)
 
     # Get appropriate lexicon
     lexicon = get_lexicon_for_language(detected_language)
+    logger.info("Applying lexicon enrichment")
     lines = lexicon.enrich(lines)
 
     # Apply language-specific enrichment
     if enrichment:
+        logger.info("Running Latin enrichment layer")
         lines = enrichment.enrich(lines)
 
     freq = enrich_mod.compute_frequency(lines)
     lines = enrich_mod.mark_first_occurrences(lines)
     doc = layout_mod.build_document(norm, language=detected_language, lines=lines)
     annotated_tokens = sum(len(line.tokens) for line in doc.pages[0].lines)
-    summary = f"Language: {detected_language}; Annotated tokens: {annotated_tokens}; Unique lemmas: {len(freq)}"
-    typer.echo(summary)
+    logger.info(
+        "Completed annotation | Annotated tokens: %s | Unique lemmas: %s",
+        annotated_tokens,
+        len(freq),
+    )
 
 
 @app.command()
@@ -95,33 +123,41 @@ def render(
     pdf: bool = typer.Option(False, "--pdf/--no-pdf"),
     language: Optional[str] = typer.Option(None, "--language", "-l", help="Force language (latin/greek)"),
 ) -> None:
+    logger = logging.getLogger("autocom.cli.render")
+    logger.info("Reading input: %s", input_path)
     text = input_path.read_text(encoding="utf-8")
     norm, lines = ingest_mod.normalize_and_segment(text)
 
     # Auto-detect language if not specified
     detected_language = language or ingest_mod.detect_language(norm)
+    logger.info("Detected language: %s", detected_language)
 
     # Get appropriate analyzer
     analyzer = get_analyzer_for_language(detected_language)
+    logger.info("Running morphological analysis on %d lines", len(lines))
     lines = analyzer.analyze(lines)
     lines = analyze_mod.disambiguate_sequence(lines)
 
     # Get appropriate lexicon
     lexicon = get_lexicon_for_language(detected_language)
+    logger.info("Applying lexicon enrichment")
     lines = lexicon.enrich(lines)
 
     # Apply language-specific enrichment (if available)
     if detected_language == "latin":
+        logger.info("Running Latin enrichment layer")
         enr = enrich_mod.LatinEnrichment()
         lines = enr.enrich(lines)
 
     doc = layout_mod.build_document(norm, language=detected_language, lines=lines)
     latex_src = render_latex(doc)
+    logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "commentary.tex").write_text(latex_src, encoding="utf-8")
     if pdf:
+        logger.info("Rendering PDF via pdflatex")
         pdf_path = render_pdf(latex_src, str(output_dir))
-        typer.echo(str(pdf_path))
+        logger.info("PDF generated at %s", pdf_path)
 
 
 @app.command()
@@ -142,43 +178,55 @@ def commentary(
         help="Prefer CLTK for Greek analysis",
     ),
 ) -> None:
+    logger = logging.getLogger("autocom.cli.commentary")
+    logger.info("Reading input: %s", input_path)
     text = input_path.read_text(encoding="utf-8")
     norm, lines = ingest_mod.normalize_and_segment(text)
 
     # Auto-detect language if not specified
     detected_language = language or ingest_mod.detect_language(norm)
+    logger.info("Detected language: %s", detected_language)
 
     # Get appropriate analyzer
     if detected_language == "greek":
+        logger.info("Initializing Greek analyzer (prefer_cltk=%s)", prefer_cltk)
         analyzer = get_analyzer_for_language("greek", prefer_cltk=prefer_cltk)
     else:
+        logger.info("Initializing Latin analyzer (prefer_spacy=%s)", prefer_spacy)
         analyzer = get_analyzer_for_language("latin", prefer_spacy=prefer_spacy)
 
+    logger.info("Running morphological analysis on %d lines", len(lines))
     lines = analyzer.analyze(lines)
     lines = analyze_mod.disambiguate_sequence(lines)
 
     # Get appropriate lexicon
     lexicon = get_lexicon_for_language(detected_language)
+    logger.info("Applying lexicon enrichment")
     lines = lexicon.enrich(lines)
 
     # Apply language-specific enrichment (if available)
     if detected_language == "latin":
+        logger.info("Running Latin enrichment layer")
         enr = enrich_mod.LatinEnrichment()
         lines = enr.enrich(lines)
 
+    logger.info("Marking first occurrences for frequency annotations")
     lines = enrich_mod.mark_first_occurrences(lines)
     doc = layout_mod.build_document(norm, language=detected_language, lines=lines)
 
     # Add title to document metadata if provided
     if title:
+        logger.info("Setting document title: %s", title)
         doc.metadata["title"] = title
 
     latex_src = render_latex(doc)
+    logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "commentary.tex").write_text(latex_src, encoding="utf-8")
     if pdf:
+        logger.info("Rendering PDF via pdflatex")
         pdf_path = render_pdf(latex_src, str(output_dir))
-        typer.echo(str(pdf_path))
+        logger.info("PDF generated at %s", pdf_path)
 
 
 def run() -> None:  # entry point for module execution
