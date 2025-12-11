@@ -25,5 +25,3 @@ def _ensure_project_root_on_sys_path(sys_path: List[str]) -> None:
 
 
 _ensure_project_root_on_sys_path(sys.path)
-
-
