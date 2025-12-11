@@ -138,10 +138,14 @@ def render(
     lines = analyzer.analyze(lines)
     lines = analyze_mod.disambiguate_sequence(lines)
 
-    # Get appropriate lexicon
+    # Compute frequency for Steadman-style annotations
+    logger.info("Computing word frequencies")
+    freq = enrich_mod.compute_frequency(lines)
+
+    # Get appropriate lexicon and enrich with frequency data
     lexicon = get_lexicon_for_language(detected_language)
-    logger.info("Applying lexicon enrichment")
-    lines = lexicon.enrich(lines)
+    logger.info("Applying lexicon enrichment with frequency data")
+    lines = lexicon.enrich(lines, frequency_map=dict(freq))
 
     # Apply language-specific enrichment (if available)
     if detected_language == "latin":
@@ -199,10 +203,14 @@ def commentary(
     lines = analyzer.analyze(lines)
     lines = analyze_mod.disambiguate_sequence(lines)
 
-    # Get appropriate lexicon
+    # Compute frequency for Steadman-style annotations
+    logger.info("Computing word frequencies")
+    freq = enrich_mod.compute_frequency(lines)
+
+    # Get appropriate lexicon and enrich with frequency data
     lexicon = get_lexicon_for_language(detected_language)
-    logger.info("Applying lexicon enrichment")
-    lines = lexicon.enrich(lines)
+    logger.info("Applying lexicon enrichment with frequency data")
+    lines = lexicon.enrich(lines, frequency_map=dict(freq))
 
     # Apply language-specific enrichment (if available)
     if detected_language == "latin":

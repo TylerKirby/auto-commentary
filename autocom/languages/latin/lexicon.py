@@ -62,6 +62,29 @@ class LatinLexicon:
         project_root = os.path.abspath(os.path.join(here, os.pardir, os.pardir, os.pardir))
         return os.path.join(project_root, "data", "lewis_short")
 
+    # POS abbreviation mapping for Steadman-style entries
+    POS_ABBREV_MAP = {
+        "noun": None,  # Gender suffices for nouns
+        "verb": "v.",
+        "adjective": "adj.",
+        "adverb": "adv.",
+        "preposition": "prep.",
+        "conjunction": "conj.",
+        "pronoun": "pron.",
+        "interjection": "interj.",
+        "numeral": "num.",
+        "particle": "part.",
+    }
+
+    # Gender abbreviation mapping
+    GENDER_ABBREV_MAP = {
+        "M": "m.",
+        "F": "f.",
+        "N": "n.",
+        "C": "c.",  # Common gender
+        "MF": "m./f.",
+    }
+
     @staticmethod
     def _normalize_headword_for_match(text: str) -> str:
         lowered = text.lower()
@@ -243,15 +266,34 @@ class LatinLexicon:
             _add(entry)
             return senses[:max_senses]
         
+        def _flatten_sense(sense_item: Any) -> List[str]:
+            """Recursively flatten nested sense structures to strings."""
+            result = []
+            if isinstance(sense_item, str):
+                result.append(sense_item)
+            elif isinstance(sense_item, list):
+                for item in sense_item:
+                    result.extend(_flatten_sense(item))
+            elif isinstance(sense_item, dict):
+                # Try common keys for definitions
+                for key in ("gloss", "def", "sense", "shortdef", "definition"):
+                    if key in sense_item and isinstance(sense_item[key], str):
+                        result.append(sense_item[key])
+                        break
+            return result
+
         if isinstance(entry, dict):
             # Handle Lewis & Short specific structure
             # Try "senses" field first (list of definitions)
             if "senses" in entry and isinstance(entry["senses"], list):
-                for sense in entry["senses"][:max_senses]:
-                    if isinstance(sense, str):
+                flat_senses = _flatten_sense(entry["senses"])
+                for sense in flat_senses[:max_senses * 2]:  # Get more than needed, then filter
+                    if isinstance(sense, str) and len(sense) > 5:
                         clean_sense = _extract_clean_sense(sense)
                         if clean_sense:
                             _add(clean_sense)
+                    if len(senses) >= max_senses:
+                        break
             
             # If no senses found, try "main_notes" (often contains definitions)
             if not senses and "main_notes" in entry:
@@ -284,38 +326,155 @@ class LatinLexicon:
         
         return senses[:max_senses]
 
-    def lookup(self, lemma: str) -> List[str]:
+    def _get_lewis_short_entry(self, lemma: str) -> Optional[Dict[str, Any]]:
+        """Get the raw Lewis & Short entry for a lemma."""
         if not lemma:
-            return []
+            return None
         norm = self._normalize_headword_for_match(lemma)
         initial = norm[:1].upper()
         if not initial:
-            return []
-        
+            return None
+
         # Try primary letter first
         mapping = self._load_lewis_short_letter(initial)
         if mapping:
             entry = mapping.get(norm)
             if entry is not None:
-                return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
-        
-        # Handle v/u variants: if looking for 'u' words, also try 'v' file
-        if initial == 'U':
-            v_mapping = self._load_lewis_short_letter('V')
+                return entry
+
+        # Handle v/u variants
+        if initial == "U":
+            v_mapping = self._load_lewis_short_letter("V")
             if v_mapping:
                 entry = v_mapping.get(norm)
                 if entry is not None:
-                    return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
-        
-        # Handle v/u variants: if looking for 'v' words, also try 'u' file  
-        elif initial == 'V':
-            u_mapping = self._load_lewis_short_letter('U')
+                    return entry
+        elif initial == "V":
+            u_mapping = self._load_lewis_short_letter("U")
             if u_mapping:
                 entry = u_mapping.get(norm)
                 if entry is not None:
-                    return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
-        
+                    return entry
+
+        return None
+
+    def _extract_verb_principal_parts(self, main_notes: str) -> Optional[str]:
+        """Extract principal parts from verb main_notes in short form.
+
+        Examples:
+            "cănō, cĕcĭnī, cantum, 3" -> "cecinī, cantum (3)"
+            "căchinno, āvi, ātum, 1" -> "āvī, ātum (1)"
+            "sum, fuī, futūrus" -> "fuī, futūrus"
+        """
+        if not main_notes:
+            return None
+
+        # Clean the main_notes - remove parenthetical content and clean whitespace
+        cleaned = re.sub(r"\([^)]*\)", "", main_notes)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+        # Try to extract principal parts pattern: word, part2, part3, [conjugation]
+        # Pattern matches: comma-separated parts, optionally ending with a number
+        match = re.match(
+            r"^[^,]+,\s*([^,]+),\s*([^,0-9]+)(?:,?\s*(\d))?",
+            cleaned,
+            re.UNICODE,
+        )
+        if match:
+            part2 = match.group(1).strip()
+            part3 = match.group(2).strip()
+            conj = match.group(3)
+
+            # Clean up the parts - remove any trailing punctuation
+            part2 = re.sub(r"[,;:\s]+$", "", part2)
+            part3 = re.sub(r"[,;:\s]+$", "", part3)
+
+            if conj:
+                return f"{part2}, {part3} ({conj})"
+            elif part2 and part3:
+                return f"{part2}, {part3}"
+
+        # Simpler pattern for two-part verbs: word, part2
+        match2 = re.match(r"^[^,]+,\s*([^,;]+)", cleaned, re.UNICODE)
+        if match2:
+            part2 = match2.group(1).strip()
+            part2 = re.sub(r"[,;:\s]+$", "", part2)
+            if part2 and len(part2) > 1:
+                return part2
+
+        return None
+
+    def _extract_dictionary_metadata(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract Steadman-style dictionary entry metadata from Lewis & Short entry."""
+        metadata: Dict[str, Any] = {}
+
+        if not isinstance(entry, dict):
+            return metadata
+
+        # Extract headword with macrons
+        if "title_orthography" in entry:
+            metadata["headword"] = entry["title_orthography"]
+        elif "key" in entry:
+            metadata["headword"] = entry["key"]
+
+        # Extract genitive ending (format as "-ending")
+        if "title_genitive" in entry:
+            gen = entry["title_genitive"]
+            if gen and gen != "indecl.":
+                # Add hyphen prefix if not already present
+                if not gen.startswith("-"):
+                    gen = f"-{gen}"
+                metadata["genitive"] = gen
+
+        # Extract gender abbreviation
+        if "gender" in entry:
+            gender = entry["gender"]
+            if gender in self.GENDER_ABBREV_MAP:
+                metadata["gender"] = self.GENDER_ABBREV_MAP[gender]
+
+        # Extract POS abbreviation
+        if "part_of_speech" in entry and entry["part_of_speech"]:
+            pos = entry["part_of_speech"].lower()
+            if pos in self.POS_ABBREV_MAP:
+                abbrev = self.POS_ABBREV_MAP[pos]
+                if abbrev:  # None for nouns (gender suffices)
+                    metadata["pos_abbrev"] = abbrev
+
+            # Extract principal parts for verbs
+            if pos == "verb" and "main_notes" in entry:
+                principal_parts = self._extract_verb_principal_parts(entry["main_notes"])
+                if principal_parts:
+                    metadata["principal_parts"] = principal_parts
+
+        return metadata
+
+    def lookup(self, lemma: str) -> List[str]:
+        """Look up definitions for a lemma."""
+        entry = self._get_lewis_short_entry(lemma)
+        if entry is not None:
+            return self._extract_definitions_from_lewis_entry(entry, self.max_senses)
         return []
+
+    def lookup_with_metadata(self, lemma: str) -> Dict[str, Any]:
+        """Look up definitions and dictionary metadata for a lemma.
+
+        Returns a dict with:
+            - senses: List[str] - definitions
+            - headword: Optional[str] - headword with macrons
+            - genitive: Optional[str] - genitive ending (e.g., "-ī")
+            - gender: Optional[str] - gender abbreviation (e.g., "n.")
+            - pos_abbrev: Optional[str] - POS abbreviation (e.g., "v.")
+            - principal_parts: Optional[str] - verb principal parts
+        """
+        result: Dict[str, Any] = {"senses": []}
+
+        entry = self._get_lewis_short_entry(lemma)
+        if entry is not None:
+            result["senses"] = self._extract_definitions_from_lewis_entry(entry, self.max_senses)
+            metadata = self._extract_dictionary_metadata(entry)
+            result.update(metadata)
+
+        return result
 
     def _try_latin_wordnet_api(self, lemma: str) -> List[str]:
         """Query Latin WordNet API for definitions."""
@@ -450,38 +609,69 @@ class LatinLexicon:
                 break
         return definitions[: self.max_senses]
 
-    def enrich_token(self, token: Token) -> Token:
+    def enrich_token(self, token: Token, frequency: Optional[int] = None) -> Token:
+        """Enrich a token with dictionary information.
+
+        Args:
+            token: The token to enrich
+            frequency: Optional occurrence count for this lemma in the text
+        """
         if token.is_punct:
             return token
         lemma = token.analysis.lemma if token.analysis else token.text
-        
-        # Multi-layer fallback system
-        senses = []
-        
-        # Layer 1: Lewis & Short (primary)
-        senses = self.lookup(lemma)
-        
+
+        # Multi-layer fallback system with metadata from Lewis & Short
+        lookup_result = self.lookup_with_metadata(lemma)
+        senses = lookup_result.get("senses", [])
+
         # Layer 2: Latin WordNet API (modern fallback)
         if not senses:
             senses = self._try_latin_wordnet_api(lemma)
-        
+
         # Layer 3: Latin is Simple API (fast fallback)
         if not senses:
             senses = self._try_latin_simple_api(lemma)
-        
+
         # Layer 4: Whitaker's Words (offline fallback)
         if not senses:
             senses = self.fallback_definitions(lemma)
-        
-        token.gloss = Gloss(lemma=lemma, senses=senses)
+
+        # Build Gloss with Steadman-style metadata
+        token.gloss = Gloss(
+            lemma=lemma,
+            senses=senses,
+            headword=lookup_result.get("headword"),
+            genitive=lookup_result.get("genitive"),
+            gender=lookup_result.get("gender"),
+            pos_abbrev=lookup_result.get("pos_abbrev"),
+            principal_parts=lookup_result.get("principal_parts"),
+            frequency=frequency,
+        )
         return token
 
-    def enrich_line(self, line: Line) -> Line:
-        line.tokens = [self.enrich_token(t) for t in line.tokens]
+    def enrich_line(self, line: Line, frequency_map: Optional[Dict[str, int]] = None) -> Line:
+        """Enrich a line with dictionary information.
+
+        Args:
+            line: The line to enrich
+            frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
+        """
+        for token in line.tokens:
+            if token.is_punct:
+                continue
+            lemma = token.analysis.lemma if token.analysis else token.text
+            freq = frequency_map.get(lemma.lower()) if frequency_map else None
+            self.enrich_token(token, frequency=freq)
         return line
 
-    def enrich(self, lines: Iterable[Line]) -> List[Line]:
-        return [self.enrich_line(line) for line in lines]
+    def enrich(self, lines: Iterable[Line], frequency_map: Optional[Dict[str, int]] = None) -> List[Line]:
+        """Enrich lines with dictionary information.
+
+        Args:
+            lines: Lines to enrich
+            frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
+        """
+        return [self.enrich_line(line, frequency_map) for line in lines]
 
 
 class LatinLexiconService:

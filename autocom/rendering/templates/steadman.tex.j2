@@ -101,9 +101,15 @@
 {% for token in line.tokens %}
 {% if token.gloss and token.analysis and token.analysis.lemma not in page_glossed_words %}
 {% set _ = page_glossed_words.append(token.analysis.lemma) %}
+{% set hw = token.gloss.headword or token.analysis.lemma %}
+{% set has_definition = token.gloss.best %}
+{% if has_definition %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency and token.gloss.frequency > 1 %}, {{ token.gloss.frequency }}{% endif %}
 
-\textbf{{ "{" }}{{ token.analysis.lemma | latex_escape }}{{ "}" }}{% if token.analysis.pos_labels %} ({{ token.analysis.pos_labels[0] | latex_escape }}){% endif %}: {% if token.gloss.best %}{{ token.gloss.best | latex_escape }}{% else %}definition not found{% endif %}
+{% else %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
 
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endfor %}

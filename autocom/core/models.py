@@ -40,10 +40,17 @@ class Analysis(BaseModel):
 
 
 class Gloss(BaseModel):
-    """Dictionary senses for a lemma with a preferred short gloss."""
+    """Dictionary senses for a lemma with Steadman-style formatting info."""
 
     lemma: str
     senses: List[str] = Field(default_factory=list)
+    # Steadman-style dictionary entry fields:
+    headword: Optional[str] = None  # e.g., "periculum" with macrons
+    genitive: Optional[str] = None  # e.g., "-ī"
+    gender: Optional[str] = None  # e.g., "n." for neuter
+    pos_abbrev: Optional[str] = None  # e.g., "v." for verb, "adj." for adjective
+    principal_parts: Optional[str] = None  # for verbs: "cecinī, cantum (3)"
+    frequency: Optional[int] = None  # occurrence count in text
 
     @property
     def best(self) -> Optional[str]:
