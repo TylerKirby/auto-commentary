@@ -94,3 +94,5 @@ class Document(BaseModel):
     language: Literal["latin", "greek"]
     pages: List[Page] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    # Core vocabulary: words appearing 15+ times, listed at front of document
+    core_vocabulary: List[Token] = Field(default_factory=list)

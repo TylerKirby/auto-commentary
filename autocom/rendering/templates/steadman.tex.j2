@@ -32,7 +32,21 @@
 \DeclareUnicodeCharacter{03C7}{\ensuremath{\chi}}
 \DeclareUnicodeCharacter{03C8}{\ensuremath{\psi}}
 \DeclareUnicodeCharacter{03C9}{\ensuremath{\omega}}
-% Handle common diacritics by ignoring them (basic fallback)
+% Greek vowels with accents (tonos/oxia)
+\DeclareUnicodeCharacter{03AC}{\ensuremath{\alpha}}  % ά - alpha with tonos
+\DeclareUnicodeCharacter{03AD}{\ensuremath{\epsilon}}  % έ - epsilon with tonos
+\DeclareUnicodeCharacter{03AE}{\ensuremath{\eta}}  % ή - eta with tonos
+\DeclareUnicodeCharacter{03AF}{\ensuremath{\iota}}  % ί - iota with tonos
+\DeclareUnicodeCharacter{03CC}{\ensuremath{o}}  % ό - omicron with tonos
+\DeclareUnicodeCharacter{03CD}{\ensuremath{\upsilon}}  % ύ - upsilon with tonos
+\DeclareUnicodeCharacter{03CE}{\ensuremath{\omega}}  % ώ - omega with tonos
+% Greek vowels with diaeresis
+\DeclareUnicodeCharacter{03CA}{\ensuremath{\iota}}  % ϊ - iota with dialytika
+\DeclareUnicodeCharacter{03CB}{\ensuremath{\upsilon}}  % ϋ - upsilon with dialytika
+% Greek vowels with diaeresis and tonos
+\DeclareUnicodeCharacter{0390}{\ensuremath{\iota}}  % ΐ - iota with dialytika and tonos
+\DeclareUnicodeCharacter{03B0}{\ensuremath{\upsilon}}  % ΰ - upsilon with dialytika and tonos
+% Handle common combining diacritics by ignoring them (basic fallback)
 \DeclareUnicodeCharacter{0313}{}
 \DeclareUnicodeCharacter{0314}{}
 \DeclareUnicodeCharacter{0341}{}
@@ -46,7 +60,13 @@
 \DeclareUnicodeCharacter{0308}{}
 
 % Page setup
+{% if doc.metadata.paper_size == "a4" %}
+\geometry{a4paper, margin=0.75in}
+{% elif doc.metadata.paper_size == "a5" %}
+\geometry{a5paper, margin=0.5in}
+{% else %}
 \geometry{letterpaper, margin=0.75in}
+{% endif %}
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[C]{{ "{{" }}{% if doc.metadata.title %}{{ doc.metadata.title }}{% else %}Commentary{% endif %}{{ "}}" }}
@@ -58,15 +78,30 @@
 
 \begin{document}
 
-% Title page
-{% if doc.metadata.title %}
+{% if doc.core_vocabulary %}
+% Core Vocabulary - words appearing 15+ times (learn these first!)
 \begin{center}
-\Large\textbf{{ "{{" }}{{ doc.metadata.title }}{{ "}}" }}
+\large\textbf{Core Vocabulary}
 \end{center}
-\vspace{1em}
+\vspace{0.5em}
+
+\begin{multicols}{2}
+{% for token in doc.core_vocabulary %}
+{% set hw = token.gloss.headword or token.analysis.lemma %}
+{% set has_definition = token.gloss.best %}
+{% if has_definition %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency %}, {{ token.gloss.frequency }}{% endif %}
+
+{% else %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
+
+{% endif %}
+{% endfor %}
+\end{multicols}
+\newpage
 {% endif %}
 
-% Render each page separately with its own glossary
+% Render each page separately with its own glossary (excluding core vocabulary)
 {% for page in doc.pages %}
 
 {% if not loop.first %}
@@ -80,27 +115,18 @@
 \noindent
 {% if line.number %}\textbf{{ "{{" }}{{ line.number }}{{ "}}" }} {% endif %}
 {{ line.text | latex_escape }}
-\\[0.5em]
+\\
 {% else %}
-\vspace{0.5em}
+\vspace{0.25em}
 {% endif %}
 {% endfor %}
 
 \vspace{1em}
 \hrule
-\vspace{1em}
-
-% Glossary for ONLY this page's words
-\begin{center}
-\large\textbf{Glossary{% if page.number %} - Page {{ page.number }}{% endif %}{% if page.lines and page.lines|map(attribute='number')|list|select %} (Lines {% for line in page.lines if line.number %}{{ line.number }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}}
-\end{center}
+\vspace{0.5em}
 
 \begin{multicols}{2}
-{% set page_glossed_words = [] %}
-{% for line in page.lines %}
-{% for token in line.tokens %}
-{% if token.gloss and token.analysis and token.analysis.lemma not in page_glossed_words %}
-{% set _ = page_glossed_words.append(token.analysis.lemma) %}
+{% for token in page.lines | sorted_glossary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
 {% set has_definition = token.gloss.best %}
 {% if has_definition %}
@@ -110,8 +136,6 @@
 \textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
 
 {% endif %}
-{% endif %}
-{% endfor %}
 {% endfor %}
 \end{multicols}
 

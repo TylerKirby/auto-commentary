@@ -171,6 +171,12 @@ def commentary(
     pdf: bool = typer.Option(False, "--pdf/--no-pdf"),
     language: Optional[str] = typer.Option(None, "--language", "-l", help="Force language (latin/greek)"),
     title: Optional[str] = typer.Option(None, "--title", help="Commentary title"),
+    paper_size: str = typer.Option(
+        "letter",
+        "--paper-size",
+        "-p",
+        help="Paper size for pagination (letter, a4, a5)",
+    ),
     prefer_spacy: bool = typer.Option(
         True,
         "--prefer-spacy/--no-prefer-spacy",
@@ -180,6 +186,11 @@ def commentary(
         True,
         "--prefer-cltk/--no-prefer-cltk",
         help="Prefer CLTK for Greek analysis",
+    ),
+    api_fallbacks: bool = typer.Option(
+        True,
+        "--api-fallbacks/--no-api-fallbacks",
+        help="Enable API fallbacks for dictionary lookups (slower but more complete)",
     ),
 ) -> None:
     logger = logging.getLogger("autocom.cli.commentary")
@@ -208,8 +219,8 @@ def commentary(
     freq = enrich_mod.compute_frequency(lines)
 
     # Get appropriate lexicon and enrich with frequency data
-    lexicon = get_lexicon_for_language(detected_language)
-    logger.info("Applying lexicon enrichment with frequency data")
+    lexicon = get_lexicon_for_language(detected_language, enable_api_fallbacks=api_fallbacks)
+    logger.info("Applying lexicon enrichment with frequency data (api_fallbacks=%s)", api_fallbacks)
     lines = lexicon.enrich(lines, frequency_map=dict(freq))
 
     # Apply language-specific enrichment (if available)
@@ -220,7 +231,18 @@ def commentary(
 
     logger.info("Marking first occurrences for frequency annotations")
     lines = enrich_mod.mark_first_occurrences(lines)
-    doc = layout_mod.build_document(norm, language=detected_language, lines=lines)
+
+    # Extract core vocabulary (words appearing 15+ times) for Steadman-style front matter
+    logger.info("Extracting core vocabulary (15+ occurrences)")
+    core_vocab_tokens, core_vocab_lemmas = enrich_mod.extract_core_vocabulary_tokens(lines, frequency_threshold=15)
+    logger.info("Found %d core vocabulary words", len(core_vocab_tokens))
+
+    logger.info("Building document with paper size: %s", paper_size)
+    doc = layout_mod.build_document(norm, language=detected_language, lines=lines, paper_size=paper_size)
+
+    # Add core vocabulary to document
+    doc.core_vocabulary = core_vocab_tokens
+    doc.metadata["core_vocab_lemmas"] = core_vocab_lemmas
 
     # Add title to document metadata if provided
     if title:

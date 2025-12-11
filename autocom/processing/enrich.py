@@ -5,7 +5,7 @@ Enrichment: macronization/accents, frequency stats, first-occurrence tracking.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Iterable, List, Set
+from typing import Iterable, List, Set, Tuple
 
 from cltk.morphology.lat import CollatinusDecliner  # type: ignore
 
@@ -80,3 +80,46 @@ def mark_first_occurrences(lines: List[Line]) -> List[Line]:
                 token.normalized = (token.normalized or token.text) + "|FIRST"
                 seen.add(key)
     return lines
+
+
+def extract_core_vocabulary_tokens(
+    lines: List[Line],
+    frequency_threshold: int = 15,
+) -> Tuple[List[Token], Set[str]]:
+    """
+    Extract tokens for words appearing >= threshold times (Steadman-style core vocabulary).
+
+    These high-frequency words appear at the front of the document and are
+    excluded from per-page glossaries.
+
+    Args:
+        lines: Analyzed and enriched lines with glosses
+        frequency_threshold: Minimum occurrences to be considered core vocabulary
+
+    Returns:
+        Tuple of:
+        - List of unique tokens (one per lemma) sorted alphabetically by headword
+        - Set of lemma strings (lowercase) for filtering per-page glossaries
+    """
+    # Compute frequency
+    freq = compute_frequency(lines)
+
+    # Find lemmas meeting threshold
+    core_lemmas = {lemma for lemma, count in freq.items() if count >= frequency_threshold}
+
+    # Collect one token per core lemma (need the token to have gloss data)
+    seen: Set[str] = set()
+    tokens: List[Token] = []
+    for line in lines:
+        for token in line.tokens:
+            if not token.gloss or not token.analysis or not token.analysis.lemma:
+                continue
+            lemma_lower = token.analysis.lemma.lower()
+            if lemma_lower in core_lemmas and lemma_lower not in seen:
+                tokens.append(token)
+                seen.add(lemma_lower)
+
+    # Sort alphabetically by headword (or lemma if no headword)
+    tokens.sort(key=lambda t: (t.gloss.headword or t.analysis.lemma or "").lower())
+
+    return tokens, core_lemmas
