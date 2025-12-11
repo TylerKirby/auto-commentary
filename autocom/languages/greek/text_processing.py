@@ -122,39 +122,39 @@ def split_enclitic(word: str) -> Tuple[str, Optional[str]]:
     # Common Greek enclitics with minimum base word requirements
     # Format: (enclitic, min_base_length)
     enclitics_with_min_length = [
-        ("γε", 3),   # Requires at least 3 chars in base word
-        ("δε", 3),   # Common but needs substantial base
-        ("δη", 3),   # Emphatic particle
+        ("γε", 3),  # Requires at least 3 chars in base word
+        ("δε", 3),  # Common but needs substantial base
+        ("δη", 3),  # Emphatic particle
         ("που", 3),  # Indefinite adverb
-        ("πως", 3),  # Indefinite adverb  
+        ("πως", 3),  # Indefinite adverb
         ("τοι", 3),  # Ethical dative
         ("περ", 4),  # Intensive particle (needs longer base)
-        ("τε", 3),   # Connective
+        ("τε", 3),  # Connective
         ("τις", 3),  # Indefinite pronoun
-        ("τι", 3),   # Indefinite pronoun
+        ("τι", 3),  # Indefinite pronoun
         ("πού", 3),  # Interrogative
     ]
-    
+
     # Words that should NEVER be split (common false positives)
     protected_words = {
-        "ἄειδε",     # Imperfect of ἀείδω (sing) - NOT ἄει + δε
-        "οἶδε",      # Perfect of οἶδα (know) - NOT οἶ + δε  
-        "ἴδε",       # Aorist imperative of ὁράω (see)
-        "εἶδε",      # Aorist of ὁράω
-        "τόδε",      # Demonstrative pronoun
-        "τήνδε",     # Demonstrative pronoun
-        "ὅδε",       # Demonstrative pronoun
-        "ἥδε",       # Demonstrative pronoun
-        "τάδε",      # Demonstrative pronoun
-        "οἵδε",      # Demonstrative pronoun
-        "αἵδε",      # Demonstrative pronoun
-        "τοίσδε",    # Demonstrative pronoun
-        "τάσδε",     # Demonstrative pronoun
-        "τῇδε",      # Demonstrative pronoun/adverb
-        "πάντε",     # All (neut. dual)
-        "ἔπειτε",    # Then, thereupon
+        "ἄειδε",  # Imperfect of ἀείδω (sing) - NOT ἄει + δε
+        "οἶδε",  # Perfect of οἶδα (know) - NOT οἶ + δε
+        "ἴδε",  # Aorist imperative of ὁράω (see)
+        "εἶδε",  # Aorist of ὁράω
+        "τόδε",  # Demonstrative pronoun
+        "τήνδε",  # Demonstrative pronoun
+        "ὅδε",  # Demonstrative pronoun
+        "ἥδε",  # Demonstrative pronoun
+        "τάδε",  # Demonstrative pronoun
+        "οἵδε",  # Demonstrative pronoun
+        "αἵδε",  # Demonstrative pronoun
+        "τοίσδε",  # Demonstrative pronoun
+        "τάσδε",  # Demonstrative pronoun
+        "τῇδε",  # Demonstrative pronoun/adverb
+        "πάντε",  # All (neut. dual)
+        "ἔπειτε",  # Then, thereupon
     }
-    
+
     # Check if word is protected
     word_normalized = strip_accents_and_breathing(word).lower()
     for protected in protected_words:

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     from src.pipeline.api_client import get_api_client
+
     _API_CLIENT_AVAILABLE = True
 except ImportError:
     _API_CLIENT_AVAILABLE = False
@@ -150,6 +151,7 @@ class GreekParsingTools:
             else:
                 # Fallback to direct request (legacy mode)
                 import requests
+
                 url = f"{self._morpheus_url}{urllib.parse.quote(normalized)}"
                 response = requests.get(url, timeout=timeout_seconds)
                 response.raise_for_status()
@@ -344,4 +346,3 @@ class GreekAnalyzer:
     def analyze(self, lines) -> List[Any]:  # List[Line] from domain.models
         """Analyze all lines in a Greek text."""
         return [self.analyze_line(line) for line in lines]
-

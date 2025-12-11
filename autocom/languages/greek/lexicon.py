@@ -184,4 +184,3 @@ class GreekLexiconService:
         """Get all available senses for a lemma."""
         gloss = self.lexicon.get_gloss(lemma)
         return gloss.senses if gloss else []
-
