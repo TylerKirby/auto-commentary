@@ -20,6 +20,7 @@ from urllib3.util.retry import Retry
 @dataclass
 class CircuitBreakerState:
     """Track circuit breaker state for an API endpoint."""
+
     failures: int = 0
     last_failure: Optional[datetime] = None
     is_open: bool = False
@@ -34,7 +35,7 @@ class RobustAPIClient:
     - Circuit breaker pattern
     - Connection pooling
     """
-    
+
     def __init__(
         self,
         cache_dir: str = ".api_cache",
@@ -45,7 +46,7 @@ class RobustAPIClient:
     ):
         """
         Initialize robust API client.
-        
+
         :param cache_dir: Directory for SQLite cache database
         :param cache_ttl_days: How long to keep cached responses
         :param max_retries: Maximum retry attempts
@@ -57,17 +58,17 @@ class RobustAPIClient:
         self.max_retries = max_retries
         self.circuit_breaker_threshold = circuit_breaker_threshold
         self.circuit_breaker_timeout = timedelta(minutes=circuit_breaker_timeout_minutes)
-        
+
         # Create cache directory
         os.makedirs(cache_dir, exist_ok=True)
         self.cache_db_path = os.path.join(cache_dir, "api_cache.db")
-        
+
         # Initialize cache database
         self._init_cache_db()
-        
+
         # Circuit breakers per endpoint
         self.circuit_breakers: Dict[str, CircuitBreakerState] = {}
-        
+
         # Configure session with connection pooling and retries
         self.session = requests.Session()
         retry_strategy = Retry(
@@ -83,7 +84,7 @@ class RobustAPIClient:
         )
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
-    
+
     def _init_cache_db(self):
         """Initialize SQLite cache database."""
         conn = sqlite3.connect(self.cache_db_path)
@@ -102,51 +103,57 @@ class RobustAPIClient:
         """)
         conn.commit()
         conn.close()
-    
+
     def _get_cache_key(self, url: str, params: Optional[Dict] = None) -> str:
         """Generate cache key from URL and parameters."""
         if params:
             url = f"{url}?{urlencode(sorted(params.items()))}"
         return hashlib.sha256(url.encode()).hexdigest()
-    
+
     def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """Retrieve cached response if valid."""
         conn = sqlite3.connect(self.cache_db_path)
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT response_data 
             FROM api_cache 
             WHERE cache_key = ? AND expires_at > datetime('now')
-        """, (cache_key,))
-        
+        """,
+            (cache_key,),
+        )
+
         row = cursor.fetchone()
         conn.close()
-        
+
         if row:
             try:
                 return json.loads(row[0])
             except json.JSONDecodeError:
                 return None
         return None
-    
+
     def _save_to_cache(self, cache_key: str, response_data: Dict[str, Any]):
         """Save response to cache."""
         conn = sqlite3.connect(self.cache_db_path)
         cursor = conn.cursor()
-        
+
         now = datetime.now()
         expires_at = now + self.cache_ttl
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO api_cache 
             (cache_key, response_data, created_at, expires_at)
             VALUES (?, ?, ?, ?)
-        """, (cache_key, json.dumps(response_data), now, expires_at))
-        
+        """,
+            (cache_key, json.dumps(response_data), now, expires_at),
+        )
+
         conn.commit()
         conn.close()
-    
+
     def _clean_expired_cache(self):
         """Remove expired cache entries."""
         conn = sqlite3.connect(self.cache_db_path)
@@ -157,46 +164,46 @@ class RobustAPIClient:
         """)
         conn.commit()
         conn.close()
-    
+
     def _check_circuit_breaker(self, endpoint: str) -> bool:
         """
         Check if circuit breaker allows request.
-        
+
         :return: True if request allowed, False if circuit is open
         """
         if endpoint not in self.circuit_breakers:
             self.circuit_breakers[endpoint] = CircuitBreakerState()
-        
+
         breaker = self.circuit_breakers[endpoint]
-        
+
         # Check if circuit should be closed again
         if breaker.is_open and breaker.next_retry_time:
             if datetime.now() >= breaker.next_retry_time:
                 breaker.is_open = False
                 breaker.failures = 0
                 breaker.next_retry_time = None
-        
+
         return not breaker.is_open
-    
+
     def _record_failure(self, endpoint: str):
         """Record API failure for circuit breaker."""
         if endpoint not in self.circuit_breakers:
             self.circuit_breakers[endpoint] = CircuitBreakerState()
-        
+
         breaker = self.circuit_breakers[endpoint]
         breaker.failures += 1
         breaker.last_failure = datetime.now()
-        
+
         # Open circuit if threshold reached
         if breaker.failures >= self.circuit_breaker_threshold:
             breaker.is_open = True
             breaker.next_retry_time = datetime.now() + self.circuit_breaker_timeout
-    
+
     def _record_success(self, endpoint: str):
         """Record API success for circuit breaker."""
         if endpoint in self.circuit_breakers:
             self.circuit_breakers[endpoint].failures = 0
-    
+
     def get(
         self,
         url: str,
@@ -206,7 +213,7 @@ class RobustAPIClient:
     ) -> Optional[Dict[str, Any]]:
         """
         Make a GET request with caching and resilience.
-        
+
         :param url: API endpoint URL
         :param params: Query parameters
         :param timeout: Request timeout in seconds
@@ -215,7 +222,7 @@ class RobustAPIClient:
         """
         # Extract endpoint for circuit breaker
         endpoint = url.split("?")[0].split("/")[-1]
-        
+
         # Check circuit breaker
         if not self._check_circuit_breaker(endpoint):
             # Try cache even if circuit is open
@@ -225,14 +232,14 @@ class RobustAPIClient:
                 if cached:
                     return cached
             return None
-        
+
         # Check cache first
         if use_cache:
             cache_key = self._get_cache_key(url, params)
             cached = self._get_cached_response(cache_key)
             if cached:
                 return cached
-        
+
         # Make API request with retries
         try:
             response = self.session.get(
@@ -245,19 +252,19 @@ class RobustAPIClient:
                 },
             )
             response.raise_for_status()
-            
+
             # Parse JSON response
             data = response.json()
-            
+
             # Record success
             self._record_success(endpoint)
-            
+
             # Save to cache
             if use_cache:
                 self._save_to_cache(cache_key, data)
-            
+
             return data
-            
+
         except requests.exceptions.Timeout:
             self._record_failure(endpoint)
             return None
@@ -273,7 +280,7 @@ class RobustAPIClient:
         except Exception:
             self._record_failure(endpoint)
             return None
-    
+
     def clear_cache(self):
         """Clear all cached responses."""
         conn = sqlite3.connect(self.cache_db_path)
@@ -281,23 +288,23 @@ class RobustAPIClient:
         cursor.execute("DELETE FROM api_cache")
         conn.commit()
         conn.close()
-    
+
     def get_cache_stats(self) -> Dict[str, int]:
         """Get cache statistics."""
         conn = sqlite3.connect(self.cache_db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("SELECT COUNT(*) FROM api_cache")
         total = cursor.fetchone()[0]
-        
+
         cursor.execute("""
             SELECT COUNT(*) FROM api_cache 
             WHERE expires_at > datetime('now')
         """)
         valid = cursor.fetchone()[0]
-        
+
         conn.close()
-        
+
         return {
             "total_entries": total,
             "valid_entries": valid,

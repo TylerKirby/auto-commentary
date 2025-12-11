@@ -37,25 +37,26 @@ class LatinAnalyzer:
     def analyze_token(self, token: Token) -> Token:
         if token.is_punct:
             return token
-        
+
         # Use enhanced lemmatizer if available
         try:
             if self.use_enhanced_lemmatizer:
                 if self._enhanced_lemmatizer is None:
                     # Lazy import to avoid circular dependency
                     from .enhanced_lemmatizer import EnhancedLatinLemmatizer
+
                     self._enhanced_lemmatizer = EnhancedLatinLemmatizer(prefer_spacy=True)
                 lemma = self._enhanced_lemmatizer.lemmatize(token.text)
             else:
                 lemma = self.tools.get_lemma(token.text)
         except Exception:
             lemma = token.text
-            
+
         try:
             pos_labels = self.tools.get_pos(token.text)
         except Exception:
             pos_labels = []
-            
+
         backend = "enhanced-latin-tools" if self.use_enhanced_lemmatizer else "latin-tools"
         token.analysis = Analysis(
             lemma=lemma,

@@ -215,7 +215,17 @@ class LatinLexicon:
 
 
 def get_lexicon_for_language(language: str, **kwargs) -> Any:
-    """Factory function to get appropriate lexicon for language."""
+    """Factory function to get appropriate lexicon for language.
+
+    Args:
+        language: "latin" or "greek"
+        **kwargs: Additional options:
+            - max_senses: Maximum number of definitions (default: 3)
+            - data_dir: Path to Lewis & Short data directory
+            - enable_api_fallbacks: Whether to use API fallbacks (default: True)
+            - api_timeout: API request timeout in seconds (default: 3.0)
+            - primary_source: For Latin, "whitakers" (default) or "lewis_short"
+    """
     if language == "greek":
         return GreekLexiconService()
     elif language == "latin":
@@ -223,11 +233,13 @@ def get_lexicon_for_language(language: str, **kwargs) -> Any:
         data_dir = kwargs.get("data_dir")
         enable_api_fallbacks = kwargs.get("enable_api_fallbacks", True)
         api_timeout = kwargs.get("api_timeout", 3.0)
+        primary_source = kwargs.get("primary_source", "whitakers")
         return EnhancedLatinLexicon(
-            max_senses=max_senses, 
+            max_senses=max_senses,
             data_dir=data_dir,
             enable_api_fallbacks=enable_api_fallbacks,
-            api_timeout=api_timeout
+            api_timeout=api_timeout,
+            primary_source=primary_source,
         )
     else:
         raise ValueError(f"Unsupported language: {language}")
