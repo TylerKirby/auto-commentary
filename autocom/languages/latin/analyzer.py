@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from src.pipeline.api_client import get_api_client
+
     _API_CLIENT_AVAILABLE = True
 except ImportError:
     _API_CLIENT_AVAILABLE = False
@@ -192,7 +193,7 @@ class LatinParsingTools:
                         raw_headword = entry["orth"]
                     elif "hdwd" in entry:
                         raw_headword = entry["hdwd"]
-                    
+
                     if raw_headword and isinstance(raw_headword, str):
                         # Remove numbers and normalize
                         raw_headword = re.sub(r"\d+$", "", raw_headword)
@@ -245,7 +246,7 @@ class LatinParsingTools:
                             _add(def_part.split(",")[0])
                         else:
                             _add(def_part[:100])  # Limit length
-            
+
             # Secondary: Look for 'senses' array
             if "senses" in entry and isinstance(entry["senses"], list):
                 for sense in entry["senses"][:max_senses]:
@@ -262,10 +263,10 @@ class LatinParsingTools:
                                             _add(item)
                     elif isinstance(sense, str):
                         _add(sense)
-                    
+
                     if len(senses) >= max_senses:
                         break
-            
+
             # Tertiary: Look for other definition fields
             for key in ("def", "definition", "gloss", "trans"):
                 if key in entry:
@@ -273,17 +274,17 @@ class LatinParsingTools:
                     if isinstance(val, str):
                         _add(val)
                     elif isinstance(val, list):
-                        for item in val[:max_senses - len(senses)]:
+                        for item in val[: max_senses - len(senses)]:
                             if isinstance(item, str):
                                 _add(item)
-            
+
             # If still no senses, try to extract from entry_notes
             if not senses and "entry_notes" in entry:
                 notes = entry["entry_notes"]
                 if isinstance(notes, str) and len(notes) > 10:
                     # Take first meaningful part
                     _add(notes.split(".")[0])
-        
+
         return senses[:max_senses]
 
     def _lookup_lewis_short(self, lemma: str, max_senses: int) -> List[str]:
@@ -403,7 +404,7 @@ class LatinParsingTools:
 
         core_token, _ = self._strip_enclitic(word)
         url = f"{self._morpheus_url}{urllib.parse.quote(core_token)}"
-        
+
         if _API_CLIENT_AVAILABLE:
             # Use robust API client with caching
             api_client = get_api_client()
