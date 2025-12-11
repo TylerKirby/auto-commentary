@@ -378,6 +378,59 @@ class LatinLexicon:
 
         return senses[:max_senses]
 
+    def lemma_exists(self, lemma: str) -> bool:
+        """Fast check if lemma exists in any dictionary.
+
+        Used to validate lemmas before accepting them from lemmatizers.
+        Checks Lewis & Short first (fast, letter-indexed), then Whitaker's.
+
+        Args:
+            lemma: The lemma to check
+
+        Returns:
+            True if lemma found in any dictionary, False otherwise
+        """
+        if not lemma or len(lemma) < 2:
+            return False
+
+        normalized = self._normalize_headword_for_match(lemma)
+        if not normalized:
+            return False
+
+        # Check Lewis & Short (fast, O(1) lookup per letter)
+        entry = self._get_lewis_short_entry(normalized)
+        if entry:
+            return True
+
+        # Check Whitaker's Words
+        if self._whitaker:
+            try:
+                # Generate variants for u/v, i/j
+                variants = self._generate_query_variants(normalized)
+                for variant in variants:
+                    result = self._whitaker.parse(variant)
+                    if result and hasattr(result, "forms") and result.forms:
+                        return True
+            except Exception:
+                pass
+
+        return False
+
+    def _generate_query_variants(self, word: str) -> List[str]:
+        """Generate spelling variants for dictionary lookup (u/v, i/j)."""
+        variants = [word]
+        # u/v variants
+        if "u" in word:
+            variants.append(word.replace("u", "v"))
+        if "v" in word:
+            variants.append(word.replace("v", "u"))
+        # i/j variants
+        if "i" in word:
+            variants.append(word.replace("i", "j"))
+        if "j" in word:
+            variants.append(word.replace("j", "i"))
+        return variants
+
     def _get_lewis_short_entry(self, lemma: str) -> Optional[Dict[str, Any]]:
         """Get the raw Lewis & Short entry for a lemma."""
         if not lemma:
@@ -409,6 +462,130 @@ class LatinLexicon:
                     return entry
 
         return None
+
+    def _get_alternative_lemmas(self, word: str, failed_lemma: str) -> List[str]:
+        """Generate alternative lemmas to try when primary lemma fails dictionary lookup.
+
+        Args:
+            word: Original word form
+            failed_lemma: The lemma that didn't find definitions
+
+        Returns:
+            List of alternative lemmas to try, in priority order
+        """
+        alternatives: List[str] = []
+        word_lower = word.lower()
+        failed_lower = failed_lemma.lower()
+
+        # 1. Try the original word itself (sometimes it IS the lemma)
+        if word_lower != failed_lower:
+            alternatives.append(word_lower)
+
+        # 2. Strip enclitics and try core word
+        for enclitic in ("que", "ne", "ve"):
+            if word_lower.endswith(enclitic) and len(word_lower) > len(enclitic) + 2:
+                core = word_lower[: -len(enclitic)]
+                if core != failed_lower:
+                    alternatives.append(core)
+
+        # 3. Generate stem variants (morphological guesses)
+        stem_variants = self._generate_stem_variants(word_lower)
+        for variant in stem_variants:
+            if variant != failed_lower and variant not in alternatives:
+                alternatives.append(variant)
+
+        # 4. Add u/v and i/j variants for each alternative
+        expanded: List[str] = []
+        for alt in alternatives:
+            expanded.append(alt)
+            if "v" in alt:
+                expanded.append(alt.replace("v", "u"))
+            if "u" in alt:
+                expanded.append(alt.replace("u", "v"))
+            if "j" in alt:
+                expanded.append(alt.replace("j", "i"))
+            if "i" in alt:
+                expanded.append(alt.replace("i", "j"))
+
+        # Deduplicate while preserving order
+        seen = {failed_lower}
+        return [a for a in expanded if a not in seen and not seen.add(a)]  # type: ignore
+
+    def _generate_stem_variants(self, word: str) -> List[str]:
+        """Generate possible lemma forms from an inflected word.
+
+        Uses Latin morphological patterns to guess dictionary forms.
+        """
+        variants: List[str] = []
+        word_lower = word.lower()
+
+        # 3rd declension: genitive -is patterns
+        if word_lower.endswith("onis"):
+            # expeditionis → expeditio, legionis → legio
+            variants.append(word_lower[:-4] + "o")
+        if word_lower.endswith("ionis"):
+            # expeditionis → expeditio (longer pattern)
+            variants.append(word_lower[:-5] + "io")
+        if word_lower.endswith("atis"):
+            # potestatis → potestas, varietatis → varietas
+            variants.append(word_lower[:-4] + "as")
+        if word_lower.endswith("itis"):
+            # civitatis → civitas (but itis could be -ites too)
+            variants.append(word_lower[:-4] + "as")
+            variants.append(word_lower[:-4] + "es")
+        if word_lower.endswith("inis"):
+            # hominis → homo, nominis → nomen
+            variants.append(word_lower[:-4] + "o")
+            variants.append(word_lower[:-4] + "en")
+        if word_lower.endswith("oris"):
+            # clamoris → clamor, honoris → honor
+            variants.append(word_lower[:-4] + "or")
+        if word_lower.endswith("udinis"):
+            # magnitudinis → magnitudo
+            variants.append(word_lower[:-6] + "udo")
+        if word_lower.endswith("is") and len(word_lower) > 4:
+            # Generic genitive: just try nominative patterns
+            stem = word_lower[:-2]
+            variants.extend([stem, stem + "s", stem + "x"])
+
+        # 4th declension: eventus (gen) → eventus (nom)
+        if word_lower.endswith("us"):
+            variants.append(word_lower)  # Same form might be nominative
+
+        # Perfect participles: provectus → proveho
+        if word_lower.endswith(("tus", "sus", "xus")):
+            stem = word_lower[:-2]
+            # Try verb infinitive forms
+            variants.extend([stem + "o", stem + "ere", stem + "eo"])
+
+        # Ablative/dative plural: -ibus → various
+        if word_lower.endswith("ibus"):
+            stem = word_lower[:-4]
+            variants.extend([stem + "us", stem + "is", stem + "a"])
+
+        # Genitive plural: -orum/-arum → -us/-a
+        if word_lower.endswith("orum"):
+            variants.append(word_lower[:-4] + "us")
+        if word_lower.endswith("arum"):
+            variants.append(word_lower[:-4] + "a")
+
+        # Accusative plural: -os/-as/-es → nominative
+        if word_lower.endswith("os") and len(word_lower) > 3:
+            variants.append(word_lower[:-2] + "us")
+        if word_lower.endswith("as") and len(word_lower) > 3:
+            variants.append(word_lower[:-2] + "a")
+        if word_lower.endswith("es") and len(word_lower) > 3:
+            stem = word_lower[:-2]
+            variants.extend([stem + "is", stem + "s"])
+
+        # Adverbs from adjectives: -iter → -is, -e → various
+        if word_lower.endswith("iter"):
+            variants.append(word_lower[:-4] + "is")
+        if word_lower.endswith("e") and len(word_lower) > 3:
+            stem = word_lower[:-1]
+            variants.extend([stem + "is", stem + "us"])
+
+        return variants
 
     def _extract_verb_principal_parts(self, main_notes: str) -> Optional[str]:
         """Extract principal parts from verb main_notes in short form.
@@ -822,6 +999,21 @@ class LatinLexicon:
             if not result.get("senses") and self.enable_api_fallbacks:
                 result["senses"] = self._try_latin_simple_api(lemma)
 
+            # Layer 5: Try alternative lemmas (morphological guesses)
+            if not result.get("senses"):
+                alternatives = self._get_alternative_lemmas(token.text, lemma)
+                for alt_lemma in alternatives:
+                    alt_result = self._lookup_whitaker_with_metadata(alt_lemma)
+                    if not alt_result.get("senses"):
+                        alt_result = self.lookup_with_metadata(alt_lemma)
+                    if alt_result.get("senses"):
+                        result = alt_result
+                        # Update the lemma in analysis to the working one
+                        if token.analysis:
+                            token.analysis.lemma = alt_lemma
+                        lemma = alt_lemma
+                        break
+
         else:
             # Lewis & Short primary flow (original behavior)
             # Layer 1: Lewis & Short (primary)
@@ -843,6 +1035,21 @@ class LatinLexicon:
                 for key in ["headword", "genitive", "gender", "pos_abbrev", "principal_parts"]:
                     if whitaker_result.get(key) and not result.get(key):
                         result[key] = whitaker_result[key]
+
+            # Layer 5: Try alternative lemmas (morphological guesses)
+            if not result.get("senses"):
+                alternatives = self._get_alternative_lemmas(token.text, lemma)
+                for alt_lemma in alternatives:
+                    alt_result = self.lookup_with_metadata(alt_lemma)
+                    if not alt_result.get("senses"):
+                        alt_result = self._lookup_whitaker_with_metadata(alt_lemma)
+                    if alt_result.get("senses"):
+                        result = alt_result
+                        # Update the lemma in analysis to the working one
+                        if token.analysis:
+                            token.analysis.lemma = alt_lemma
+                        lemma = alt_lemma
+                        break
 
         # Build Gloss with Steadman-style metadata
         token.gloss = Gloss(

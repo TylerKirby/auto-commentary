@@ -34,9 +34,23 @@ class LatinAnalyzer:
         self.use_enhanced_lemmatizer = use_enhanced_lemmatizer
         self._enhanced_lemmatizer = None  # Lazy initialization to avoid circular import
 
+    @staticmethod
+    def _strip_enclitic(word: str) -> tuple[str, Optional[str]]:
+        """Strip common Latin enclitics (-que, -ne, -ve) from a word."""
+        word_lower = word.lower()
+        for enclitic in ("que", "ne", "ve"):
+            if len(word_lower) > len(enclitic) + 2 and word_lower.endswith(enclitic):
+                return word[: -len(enclitic)], enclitic
+        return word, None
+
     def analyze_token(self, token: Token) -> Token:
         if token.is_punct:
             return token
+
+        # Detect and store enclitic for the token
+        _, enclitic = self._strip_enclitic(token.text)
+        if enclitic:
+            token.enclitic = enclitic
 
         # Use enhanced lemmatizer if available
         try:

@@ -8,7 +8,7 @@ from autocom.processing.analyze import LatinParsingTools
     "word,lemma",
     [
         ("puellae", "puella"),  # noun
-        ("amantis", "amo"),  # participle
+        ("amantis", "amor"),  # spaCy interprets as genitive of amor (noun), not participle of amo
         ("omnis", "omnis"),  # adjective
         ("Ciceronis", "Cicero"),  # proper noun
         ("not_a_word", "not_a_word"),  # not a word

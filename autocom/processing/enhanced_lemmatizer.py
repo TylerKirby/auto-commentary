@@ -16,7 +16,11 @@ class EnhancedLatinLemmatizer:
     def __init__(self, prefer_spacy: bool = True):
         # Lazy import to avoid circular dependency
         self._tools = None
+        self._lexicon = None
         self._prefer_spacy = prefer_spacy
+
+        # Cache for lemma validation results
+        self._lemma_valid_cache: Dict[str, bool] = {}
 
         # Known corrections for CLTK errors
         self._known_corrections = {
@@ -77,7 +81,15 @@ class EnhancedLatinLemmatizer:
 
     def lemmatize(self, word: str) -> str:
         """
-        Enhanced lemmatization with error correction.
+        Enhanced lemmatization with error correction and dictionary validation.
+
+        Strategy:
+        1. Strip enclitics first (before any lemmatization)
+        2. Check for known irregular verbs
+        3. Try spaCy lemmatization with dictionary validation
+        4. Fall back to CLTK if spaCy produces invalid lemma
+        5. Apply known corrections and morphological validation
+        6. Last resort: morphological fallback
 
         Args:
             word: Latin word to lemmatize
@@ -90,35 +102,68 @@ class EnhancedLatinLemmatizer:
 
         original_word = word.strip()
 
-        # Step 1: Handle known irregular verbs first
-        word_lower = original_word.lower()
-        if word_lower in self._irregular_stems:
-            return self._preserve_case(original_word, self._irregular_stems[word_lower])
+        # Step 1: Strip enclitics FIRST, before any lemmatization
+        core_word, enclitic = self._strip_enclitic(original_word)
 
-        # Step 2: Try CLTK lemmatization
-        try:
-            if self._tools is None:
+        # Step 2: Handle known irregular verbs (use core word without enclitic)
+        core_lower = core_word.lower()
+        if core_lower in self._irregular_stems:
+            return self._preserve_case(original_word, self._irregular_stems[core_lower])
+
+        # Step 3: Initialize tools if needed
+        if self._tools is None:
+            try:
                 from .analyze import LatinParsingTools
 
                 self._tools = LatinParsingTools(prefer_spacy=self._prefer_spacy)
-            cltk_result = self._tools.get_lemma(original_word)
+            except Exception:
+                return self._morphological_fallback(original_word)
 
-            # Step 3: Apply known corrections
-            if cltk_result in self._known_corrections:
-                corrected = self._known_corrections[cltk_result]
+        # Step 4: Try spaCy on CORE WORD (without enclitic) with validation
+        if self._prefer_spacy and hasattr(self._tools, "_spacy_nlp") and self._tools._spacy_nlp is not None:
+            try:
+                doc = self._tools._spacy_nlp(core_word)
+                if doc and len(doc) > 0:
+                    spacy_lemma = doc[0].lemma_
+                    if spacy_lemma:
+                        # Validate spaCy result against dictionary
+                        if self._is_valid_lemma(spacy_lemma):
+                            return self._preserve_case(original_word, spacy_lemma)
+                        # spaCy produced invalid lemma - fall through to CLTK
+            except Exception:
+                pass
+
+        # Step 5: Try CLTK lemmatization on core word
+        try:
+            cltk_result = self._tools.get_lemma(core_word)
+
+            # Apply known corrections
+            if cltk_result.lower() in self._known_corrections:
+                corrected = self._known_corrections[cltk_result.lower()]
                 return self._preserve_case(original_word, corrected)
 
-            # Step 4: Validate result with morphological rules
-            validated = self._validate_lemma(original_word, cltk_result)
-            if validated != cltk_result:
-                return validated
+            # Validate CLTK result
+            if self._is_valid_lemma(cltk_result):
+                # Apply morphological validation for additional corrections
+                validated = self._validate_lemma(core_word, cltk_result)
+                return self._preserve_case(original_word, validated)
 
-            return cltk_result
+            # CLTK also produced invalid lemma - try validation corrections anyway
+            validated = self._validate_lemma(core_word, cltk_result)
+            if validated != cltk_result and self._is_valid_lemma(validated):
+                return self._preserve_case(original_word, validated)
+
+            # If still invalid, check if the core word itself is valid
+            if self._is_valid_lemma(core_word):
+                return self._preserve_case(original_word, core_word)
+
+            # Return CLTK result even if not validated (better than nothing)
+            return self._preserve_case(original_word, cltk_result)
 
         except Exception:
             pass
 
-        # Step 5: Fallback to morphological analysis
+        # Step 6: Fallback to morphological analysis
         return self._morphological_fallback(original_word)
 
     def _validate_lemma(self, word: str, lemma: str) -> str:
@@ -198,6 +243,61 @@ class EnhancedLatinLemmatizer:
             return False
 
         return True
+
+    def _is_valid_lemma(self, lemma: str) -> bool:
+        """Check if lemma exists in any dictionary.
+
+        Uses dictionary validation to reject invented lemmas from spaCy.
+        Results are cached for performance.
+
+        Args:
+            lemma: The lemma to validate
+
+        Returns:
+            True if lemma found in dictionary, False otherwise
+        """
+        if not lemma or len(lemma) < 2:
+            return False
+
+        lemma_lower = lemma.lower()
+
+        # Check cache first
+        if lemma_lower in self._lemma_valid_cache:
+            return self._lemma_valid_cache[lemma_lower]
+
+        # Quick plausibility checks first (fast)
+        if not self._is_plausible_lemma(lemma):
+            self._lemma_valid_cache[lemma_lower] = False
+            return False
+
+        # Check dictionaries (slower but definitive)
+        if self._lexicon is None:
+            try:
+                from autocom.languages.latin.lexicon import LatinLexicon
+
+                self._lexicon = LatinLexicon()
+            except Exception:
+                # If lexicon unavailable, fall back to plausibility
+                return True
+
+        is_valid = self._lexicon.lemma_exists(lemma)
+        self._lemma_valid_cache[lemma_lower] = is_valid
+        return is_valid
+
+    def _strip_enclitic(self, word: str) -> Tuple[str, Optional[str]]:
+        """Strip common Latin enclitics (-que, -ne, -ve) from a word.
+
+        Args:
+            word: The word to process
+
+        Returns:
+            Tuple of (core_word, enclitic) where enclitic is None if not found
+        """
+        word_lower = word.lower()
+        for enclitic in self._enclitics:
+            if len(word_lower) > len(enclitic) + 2 and word_lower.endswith(enclitic):
+                return word[: -len(enclitic)], enclitic
+        return word, None
 
     def _morphological_fallback(self, word: str) -> str:
         """Fallback morphological analysis when CLTK fails."""

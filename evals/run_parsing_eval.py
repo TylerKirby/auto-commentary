@@ -1,12 +1,13 @@
 """
-CLI evaluation for `src/agents/latin/parsing.py` using `examples/sample_latin_text.txt`.
+CLI evaluation for Latin parsing using `examples/sample_latin_text.txt`.
 
-This script tokenizes the provided Latin text file and exercises the
-`LatinParsingTools` methods (`get_lemma`, `get_pos`, `get_definition`, `get_macronization`).
+This script tokenizes the provided Latin text file and exercises the full
+Latin analysis pipeline: `LatinAnalyzer` for lemmatization/POS and `LatinLexicon`
+for definitions with alternative lemma lookup.
 
 It writes per-token results to `evals/results/<timestamp>.jsonl` and prints a concise
 summary to stdout. Network-dependent parts (POS via Morpheus) are optional and
-fail-safe. Definitions require Whitaker's Words; if unavailable, results will be empty.
+fail-safe.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
-# Ensure repository root is on sys.path so `src` package can be imported when
+# Ensure repository root is on sys.path so `autocom` package can be imported when
 # running this file directly (python evals/run_parsing_eval.py)
 _THIS_FILE = Path(__file__).resolve()
 _REPO_ROOT = _THIS_FILE.parents[1]
@@ -30,11 +31,12 @@ if str(_REPO_ROOT) not in sys.path:
 
 def _import_tools():
     # Local import to satisfy environment path setup before import
-    from src.agents.latin.parsing import (
-        LatinParsingTools as _LatinParsingTools,  # noqa: WPS433
-    )
+    from autocom.processing.analyze import LatinAnalyzer
+    from autocom.languages.latin.analyzer import LatinParsingTools  # For macronization
+    from autocom.languages.latin.lexicon import LatinLexicon
+    from autocom.core.models import Token, Analysis
 
-    return _LatinParsingTools
+    return LatinAnalyzer, LatinParsingTools, LatinLexicon, Token, Analysis
 
 
 LATIN_WORD_RE = re.compile(r"[A-Za-z\u00C0-\u024F\u0100-\u017F\u0180-\u024F]+")
@@ -87,15 +89,22 @@ def evaluate_tokens(
     max_defs: int,
 ) -> Tuple[List[TokenEvalResult], dict]:
     """
-    Run `LatinParsingTools` on an iterable of tokens and collect results plus summary metrics.
+    Run the full Latin analysis pipeline on an iterable of tokens.
+
+    Uses LatinAnalyzer (with EnhancedLatinLemmatizer) for lemmatization/POS,
+    and LatinLexicon for definitions with alternative lemma lookup.
 
     :param tokens: Iterable of token strings.
     :param enable_pos: Whether to call the networked POS service.
     :param max_defs: Maximum number of definitions to request per token.
     :return: (results, metrics) where results is a list of TokenEvalResult and metrics a dict.
     """
-    LatinParsingTools = _import_tools()
-    tools = LatinParsingTools()
+    LatinAnalyzer, LatinParsingTools, LatinLexicon, Token, Analysis = _import_tools()
+
+    # Initialize full pipeline components
+    analyzer = LatinAnalyzer(prefer_spacy=True, use_enhanced_lemmatizer=True)
+    lexicon = LatinLexicon(max_senses=max_defs)
+    tools = LatinParsingTools()  # For macronization
 
     results: List[TokenEvalResult] = []
     lemma_changed = 0
@@ -105,9 +114,9 @@ def evaluate_tokens(
     errors = 0
 
     # Source usage counters
-    lemma_source_counts = {"spacy": 0, "cltk": 0}
+    lemma_source_counts = {"enhanced": 0, "spacy": 0, "cltk": 0}
     pos_source_counts = {"spacy": 0, "morpheus": 0, "none": 0}
-    defs_source_counts = {"lewis_short": 0, "whitaker": 0, "none": 0}
+    defs_source_counts = {"lewis_short": 0, "whitaker": 0, "alternative": 0, "none": 0}
     macron_source_counts = {"collatinus": 0, "none": 0}
 
     for tok in tokens:
@@ -123,59 +132,68 @@ def evaluate_tokens(
         macron_source = "none"
         had_error = False
         try:
-            # Determine lemma and source
-            if getattr(tools, "_prefer_spacy", False) and getattr(tools, "_spacy_nlp", None) is not None:
-                try:
-                    _doc = tools._spacy_nlp(tok)  # type: ignore[attr-defined]
-                    _spacy_lemma = _doc[0].lemma_ if _doc and len(_doc) > 0 else ""
-                    if isinstance(_spacy_lemma, str) and _spacy_lemma.strip():
-                        lemma_source = "spacy"
-                except Exception:
-                    lemma_source = "cltk"
-            lemma = tools.get_lemma(tok)
-            lemma_source_counts[lemma_source] = lemma_source_counts.get(lemma_source, 0) + 1
+            # Create token and run through full analysis pipeline
+            token_obj = Token(
+                text=tok,
+                normalized=tok.lower(),
+                start_char=0,
+                end_char=len(tok),
+                is_punct=False,
+            )
 
-            # Determine POS and source
-            if enable_pos:
-                if getattr(tools, "_prefer_spacy", False) and getattr(tools, "_spacy_nlp", None) is not None:
-                    try:
-                        _docp = tools._spacy_nlp(tok)  # type: ignore[attr-defined]
-                        if _docp and len(_docp) > 0:
-                            _upos = _docp[0].pos_ or ""
-                            _feats = str(_docp[0].morph) if getattr(_docp[0], "morph", None) is not None else ""
-                            _label = _upos if not _feats else (f"{_upos}: {_feats}" if _upos else _feats)
-                            if _label:
-                                pos_source = "spacy"
-                    except Exception:
-                        pass
-                pos = tools.get_pos(tok)
-                if pos and pos_source != "spacy":
-                    pos_source = "morpheus"
-                if not pos:
+            # Step 1: Analyze token (lemmatization + POS via EnhancedLatinLemmatizer)
+            analyzer.analyze_token(token_obj)
+            lemma = token_obj.analysis.lemma if token_obj.analysis else tok
+            lemma_source = "enhanced"
+            lemma_source_counts["enhanced"] = lemma_source_counts.get("enhanced", 0) + 1
+
+            # Step 2: Get POS labels
+            if enable_pos and token_obj.analysis:
+                pos = token_obj.analysis.pos_labels or []
+                if pos:
+                    pos_source = "spacy"
+                else:
                     pos_source = "none"
                 pos_source_counts[pos_source] = pos_source_counts.get(pos_source, 0) + 1
 
-            # Determine definitions and source
-            try:
-                ls_defs_probe = tools._lookup_lewis_short(lemma or tok, max_defs)  # type: ignore[attr-defined]
-            except Exception:
-                ls_defs_probe = []
-            defs = tools.get_definition(lemma or tok, max_senses=max_defs)
-            if ls_defs_probe:
-                defs_source = "lewis_short"
-            elif defs:
-                defs_source = "whitaker"
+            # Step 3: Enrich with definitions (uses alternative lemma lookup)
+            original_lemma = lemma
+            lexicon.enrich_token(token_obj)
+
+            if token_obj.gloss and token_obj.gloss.senses:
+                defs = token_obj.gloss.senses[:max_defs]
+                final_lemma = token_obj.gloss.lemma
+
+                # Determine definition source
+                if final_lemma != original_lemma:
+                    # Alternative lemma was used
+                    defs_source = "alternative"
+                else:
+                    # Check if it came from Lewis & Short or Whitaker
+                    try:
+                        ls_probe = lexicon._get_lewis_short_entry(final_lemma)
+                        if ls_probe:
+                            defs_source = "lewis_short"
+                        else:
+                            defs_source = "whitaker"
+                    except Exception:
+                        defs_source = "whitaker"
+
+                # Update lemma to the one that found definitions
+                lemma = final_lemma
             else:
                 defs_source = "none"
+
             defs_source_counts[defs_source] = defs_source_counts.get(defs_source, 0) + 1
 
-            # Determine macronization and source
+            # Step 4: Get macronization
             macron = tools.get_macronization(lemma or tok)
             if macron and macron != tok:
                 macron_source = "collatinus"
             else:
                 macron_source = "none"
             macron_source_counts[macron_source] = macron_source_counts.get(macron_source, 0) + 1
+
         except Exception as exc:  # defensive: keep eval running
             had_error = True
             errors += 1
