@@ -149,3 +149,6 @@ output/
 
 .cursor/
 evals/results
+
+# Auto Claude data directory
+.auto-claude/

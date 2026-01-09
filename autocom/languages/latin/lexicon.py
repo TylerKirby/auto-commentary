@@ -130,6 +130,18 @@ class LatinLexicon:
         5: "-ēī",
     }
 
+    # Conjugation to 1st person singular ending mapping (for verb headwords)
+    CONJUGATION_ENDING_MAP = {
+        1: "o",      # amo
+        2: "eo",     # moneo
+        3: "o",      # ago, duco
+        4: "io",     # audio
+        5: "io",     # capio (3rd -io verbs sometimes coded as 5)
+        6: "o",      # irregular but usually -o
+        7: "o",      # irregular
+        8: "o",      # irregular (sum -> but handled specially)
+    }
+
     @staticmethod
     def _normalize_headword_for_match(text: str) -> str:
         lowered = text.lower()
@@ -930,20 +942,26 @@ class LatinLexicon:
                     # Extract roots for headword and principal parts
                     roots = getattr(lexeme, "roots", [])
                     category = getattr(lexeme, "category", [])
+                    conj = category[0] if category else None
 
                     # Build headword from first root
                     if roots and len(roots) > 0:
-                        result["headword"] = roots[0]
+                        stem = roots[0]
+                        # For verbs, construct 1st person singular (dictionary form)
+                        if wt_name == "V" and conj is not None:
+                            ending = self.CONJUGATION_ENDING_MAP.get(conj, "o")
+                            result["headword"] = f"{stem}{ending}"
+                        else:
+                            result["headword"] = stem
 
                     # Build genitive for nouns based on declension
-                    if wt_name == "N" and category and len(category) > 0:
-                        decl = category[0]
+                    if wt_name == "N" and conj is not None:
+                        decl = conj  # For nouns, category[0] is declension
                         if decl in self.DECLENSION_GENITIVE_MAP:
                             result["genitive"] = self.DECLENSION_GENITIVE_MAP[decl]
 
                     # Build principal parts for verbs
                     if wt_name == "V" and roots and len(roots) >= 4:
-                        conj = category[0] if category else ""
                         # Format: perfectum stem + ī, supine stem + um (conjugation)
                         perf_stem = roots[2] if len(roots) > 2 else ""
                         sup_stem = roots[3] if len(roots) > 3 else ""
