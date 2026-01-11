@@ -94,6 +94,101 @@ class GreekVerbClass(str, Enum):
     CONTRACT_OMICRON = "omicron_contract"  # Contract verbs in -όω (δηλόω → δηλῶ)
 
 
+class LatinStemType(str, Enum):
+    """Latin noun/adjective stem classifications following Morpheus conventions.
+
+    These map to inflectional paradigms and help identify morphological patterns.
+    Similar to Morpheus's 'stemtype' field (e.g., 'os_ou', 'a_ae').
+    """
+
+    # First declension
+    A_AE = "a_ae"  # puella, puellae
+    A_AE_GREEK = "a_ae_greek"  # Greek first declension (cometes, -ae)
+
+    # Second declension
+    US_I = "us_i"  # dominus, domini
+    ER_RI = "er_ri"  # puer, pueri (stem retains -e-)
+    ER_I = "er_i"  # ager, agri (stem loses -e-)
+    UM_I = "um_i"  # bellum, belli
+    IUS_II = "ius_ii"  # filius, filii (contracted genitive)
+    OS_OU_GREEK = "os_ou_greek"  # Greek second declension (logos, logou)
+
+    # Third declension consonant stems
+    CONS_STEM = "cons_stem"  # Generic consonant stem
+    X_CIS = "x_cis"  # rex, regis (velar + s)
+    S_RIS = "s_ris"  # flos, floris (rhotacism)
+    S_TIS = "s_tis"  # miles, militis
+    N_NIS = "n_nis"  # nomen, nominis
+
+    # Third declension i-stems
+    I_STEM_PURE = "i_stem_pure"  # turris, turris (pure i-stem)
+    I_STEM_MIXED = "i_stem_mixed"  # urbs, urbis (mixed i-stem)
+    I_STEM_NEUTER = "i_stem_neut"  # mare, maris (neuter i-stem)
+
+    # Third declension Greek
+    IS_EOS_GREEK = "is_eos_greek"  # Greek third (poesis, poeseos)
+
+    # Fourth declension
+    US_US = "us_us"  # manus, manus
+    U_US = "u_us"  # cornu, cornus (neuter)
+
+    # Fifth declension
+    ES_EI = "es_ei"  # dies, diei
+
+
+class GreekStemType(str, Enum):
+    """Greek noun/adjective stem classifications following Morpheus conventions.
+
+    Maps to inflectional paradigms. Based on Morpheus stemtype values.
+    """
+
+    # First declension (alpha/eta)
+    A_AS = "a_as"  # Long alpha: χώρα, χώρας
+    A_ES = "a_es"  # Short alpha (masc): νεανίας, νεανίου
+    E_ES = "e_es"  # Eta stems: τιμή, τιμῆς
+    A_MIXED = "a_mixed"  # Mixed alpha/eta: θάλασσα, θαλάσσης
+
+    # Second declension (omicron)
+    OS_OU = "os_ou"  # λόγος, λόγου (masculine)
+    ON_OU = "on_ou"  # δῶρον, δώρου (neuter)
+    OS_OU_CONTRACT = "os_ou_contr"  # Contracted (νοῦς < νόος)
+
+    # Third declension consonant stems
+    CONS_STEM = "cons_stem"  # Generic consonant stem
+    K_KOS = "k_kos"  # Velar stems: φύλαξ, φύλακος
+    P_POS = "p_pos"  # Labial stems: Αἰθίοψ, Αἰθίοπος
+    T_TOS = "t_tos"  # Dental stems: χάρις, χάριτος
+    N_NOS = "n_nos"  # Nasal stems: ποιμήν, ποιμένος
+    NT_NTOS = "nt_ntos"  # Nasal/dental: γίγας, γίγαντος
+    R_ROS = "r_ros"  # Liquid stems: ῥήτωρ, ῥήτορος
+    S_EOS = "s_eos"  # Sigma stems (neuter): γένος, γένους
+
+    # Third declension vowel/diphthong stems
+    EUS_EOS = "eus_eos"  # βασιλεύς, βασιλέως
+    IS_EOS = "is_eos"  # πόλις, πόλεως
+    US_EOS = "us_eos"  # ἄστυ, ἄστεως
+    I_STEM = "i_stem"  # i-stems
+
+    # Athematic/irregular
+    IRREGULAR = "irregular"  # Irregular declension
+
+
+class GreekDialect(str, Enum):
+    """Greek dialect markers for variant forms.
+
+    Important for tracking Homeric, Doric, and other dialectal variations
+    that appear in classical texts.
+    """
+
+    ATTIC = "attic"  # Standard Attic Greek
+    IONIC = "ionic"  # Herodotus, early philosophy
+    HOMERIC = "homeric"  # Epic Greek (Iliad, Odyssey)
+    DORIC = "doric"  # Pindar, Spartan
+    AEOLIC = "aeolic"  # Sappho, Alcaeus
+    KOINE = "koine"  # Hellenistic/NT Greek
+    EPIC = "epic"  # Epic forms (may overlap with Homeric)
+
+
 class LatinPrincipalParts(BaseModel):
     """Structured Latin verb principal parts (four standard forms).
 
@@ -303,6 +398,21 @@ class NormalizedLexicalEntry(BaseModel):
     # Definitions
     senses: List[str] = Field(default_factory=list, description="Cleaned, pedagogical definitions")
 
+    # Morphological decomposition (following Morpheus structure)
+    stem: Optional[str] = Field(None, description="Morphological stem (Morpheus: term.stem)")
+    suffix: Optional[str] = Field(None, description="Inflectional suffix pattern (Morpheus: term.suff)")
+
+    # Stem type classification (Morpheus: stemtype)
+    latin_stem_type: Optional[LatinStemType] = Field(
+        None, description="Latin noun/adj stem classification (e.g., a_ae, us_i, cons_stem)"
+    )
+    greek_stem_type: Optional[GreekStemType] = Field(
+        None, description="Greek noun/adj stem classification (e.g., os_ou, a_as, eus_eos)"
+    )
+
+    # Dialect tracking (Greek)
+    dialect: Optional[GreekDialect] = Field(None, description="Greek dialect variant (Attic, Ionic, Homeric, etc.)")
+
     # Nominal morphology (nouns, adjectives, pronouns)
     gender: Optional[Gender] = Field(None, description="Grammatical gender for nominals")
     number: Optional[Number] = Field(None, description="Number (for pluralia tantum like 'arma')")
@@ -488,6 +598,34 @@ GREEK_VERB_CLASS_DISPLAY_MAP = {
     GreekVerbClass.CONTRACT_OMICRON: "contr. (-όω)",
 }
 
+# POS ordering for sorting (following Morpheus conventions)
+# Lower numbers appear first in sorted output
+POS_ORDER_MAP = {
+    PartOfSpeech.NOUN: 1,
+    PartOfSpeech.VERB: 2,
+    PartOfSpeech.ADJECTIVE: 3,
+    PartOfSpeech.ADVERB: 4,
+    PartOfSpeech.PRONOUN: 5,
+    PartOfSpeech.ARTICLE: 6,
+    PartOfSpeech.PREPOSITION: 7,
+    PartOfSpeech.CONJUNCTION: 8,
+    PartOfSpeech.INTERJECTION: 9,
+    PartOfSpeech.NUMERAL: 10,
+    PartOfSpeech.PARTICLE: 11,
+    PartOfSpeech.UNKNOWN: 99,
+}
+
+# Dialect display for Greek entries
+DIALECT_DISPLAY_MAP = {
+    GreekDialect.ATTIC: None,  # Standard, no marking needed
+    GreekDialect.IONIC: "Ion.",
+    GreekDialect.HOMERIC: "Hom.",
+    GreekDialect.DORIC: "Dor.",
+    GreekDialect.AEOLIC: "Aeol.",
+    GreekDialect.KOINE: "Koine",
+    GreekDialect.EPIC: "epic",
+}
+
 
 def get_pos_display(pos: PartOfSpeech) -> Optional[str]:
     """Get display abbreviation for a part of speech."""
@@ -512,3 +650,13 @@ def get_voice_display(voice: VerbVoice) -> Optional[str]:
 def get_greek_verb_class_display(verb_class: GreekVerbClass) -> Optional[str]:
     """Get display string for Greek verb classification."""
     return GREEK_VERB_CLASS_DISPLAY_MAP.get(verb_class)
+
+
+def get_pos_order(pos: PartOfSpeech) -> int:
+    """Get sort order for a part of speech (lower = first)."""
+    return POS_ORDER_MAP.get(pos, 99)
+
+
+def get_dialect_display(dialect: GreekDialect) -> Optional[str]:
+    """Get display abbreviation for Greek dialect."""
+    return DIALECT_DISPLAY_MAP.get(dialect)

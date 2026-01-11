@@ -4,24 +4,31 @@ import pytest
 from pydantic import ValidationError
 
 from autocom.core.lexical import (
+    DIALECT_DISPLAY_MAP,
     GENDER_DISPLAY_MAP,
     GREEK_ARTICLES,
     GREEK_VERB_CLASS_DISPLAY_MAP,
     POS_DISPLAY_MAP,
+    POS_ORDER_MAP,
     VOICE_DISPLAY_MAP,
     Gender,
+    GreekDialect,
     GreekPrincipalParts,
+    GreekStemType,
     GreekVerbClass,
     Language,
     LatinPrincipalParts,
+    LatinStemType,
     NormalizedLexicalEntry,
     Number,
     PartOfSpeech,
     VerbVoice,
+    get_dialect_display,
     get_gender_display,
     get_greek_article,
     get_greek_verb_class_display,
     get_pos_display,
+    get_pos_order,
     get_voice_display,
 )
 
@@ -987,3 +994,261 @@ class TestSerialization:
         # After JSON round-trip, nested model is restored as dict due to use_enum_values
         assert restored.greek_principal_parts.present == "λύω"
         assert restored.greek_principal_parts.future == "λύσω"
+
+
+class TestLatinStemType:
+    """Test Latin stem type enum (Morpheus stemtype parity)."""
+
+    def test_first_declension_types(self):
+        """First declension stem types are defined."""
+        assert LatinStemType.A_AE.value == "a_ae"
+        assert LatinStemType.A_AE_GREEK.value == "a_ae_greek"
+
+    def test_second_declension_types(self):
+        """Second declension stem types are defined."""
+        assert LatinStemType.US_I.value == "us_i"
+        assert LatinStemType.ER_RI.value == "er_ri"
+        assert LatinStemType.ER_I.value == "er_i"
+        assert LatinStemType.UM_I.value == "um_i"
+        assert LatinStemType.IUS_II.value == "ius_ii"
+        assert LatinStemType.OS_OU_GREEK.value == "os_ou_greek"
+
+    def test_third_declension_consonant_types(self):
+        """Third declension consonant stem types are defined."""
+        assert LatinStemType.CONS_STEM.value == "cons_stem"
+        assert LatinStemType.X_CIS.value == "x_cis"
+        assert LatinStemType.S_RIS.value == "s_ris"
+        assert LatinStemType.S_TIS.value == "s_tis"
+        assert LatinStemType.N_NIS.value == "n_nis"
+
+    def test_third_declension_i_stems(self):
+        """Third declension i-stem types are defined."""
+        assert LatinStemType.I_STEM_PURE.value == "i_stem_pure"
+        assert LatinStemType.I_STEM_MIXED.value == "i_stem_mixed"
+        assert LatinStemType.I_STEM_NEUTER.value == "i_stem_neut"
+
+    def test_fourth_fifth_declension(self):
+        """Fourth and fifth declension stem types are defined."""
+        assert LatinStemType.US_US.value == "us_us"
+        assert LatinStemType.U_US.value == "u_us"
+        assert LatinStemType.ES_EI.value == "es_ei"
+
+
+class TestGreekStemType:
+    """Test Greek stem type enum (Morpheus stemtype parity)."""
+
+    def test_first_declension_types(self):
+        """First declension (alpha/eta) stem types are defined."""
+        assert GreekStemType.A_AS.value == "a_as"
+        assert GreekStemType.A_ES.value == "a_es"
+        assert GreekStemType.E_ES.value == "e_es"
+        assert GreekStemType.A_MIXED.value == "a_mixed"
+
+    def test_second_declension_types(self):
+        """Second declension (omicron) stem types are defined."""
+        assert GreekStemType.OS_OU.value == "os_ou"
+        assert GreekStemType.ON_OU.value == "on_ou"
+        assert GreekStemType.OS_OU_CONTRACT.value == "os_ou_contr"
+
+    def test_third_declension_consonant_types(self):
+        """Third declension consonant stem types are defined."""
+        assert GreekStemType.CONS_STEM.value == "cons_stem"
+        assert GreekStemType.K_KOS.value == "k_kos"
+        assert GreekStemType.P_POS.value == "p_pos"
+        assert GreekStemType.T_TOS.value == "t_tos"
+        assert GreekStemType.N_NOS.value == "n_nos"
+        assert GreekStemType.NT_NTOS.value == "nt_ntos"
+        assert GreekStemType.R_ROS.value == "r_ros"
+        assert GreekStemType.S_EOS.value == "s_eos"
+
+    def test_third_declension_vowel_types(self):
+        """Third declension vowel/diphthong stem types are defined."""
+        assert GreekStemType.EUS_EOS.value == "eus_eos"
+        assert GreekStemType.IS_EOS.value == "is_eos"
+        assert GreekStemType.US_EOS.value == "us_eos"
+        assert GreekStemType.I_STEM.value == "i_stem"
+
+    def test_irregular_type(self):
+        """Irregular stem type is defined."""
+        assert GreekStemType.IRREGULAR.value == "irregular"
+
+
+class TestGreekDialect:
+    """Test Greek dialect enum."""
+
+    def test_all_dialect_values(self):
+        """All dialect values are defined correctly."""
+        assert GreekDialect.ATTIC.value == "attic"
+        assert GreekDialect.IONIC.value == "ionic"
+        assert GreekDialect.HOMERIC.value == "homeric"
+        assert GreekDialect.DORIC.value == "doric"
+        assert GreekDialect.AEOLIC.value == "aeolic"
+        assert GreekDialect.KOINE.value == "koine"
+        assert GreekDialect.EPIC.value == "epic"
+
+
+class TestMorpheusParityFields:
+    """Test Morpheus-parity fields on NormalizedLexicalEntry."""
+
+    def test_stem_suffix_fields(self):
+        """Can set stem and suffix for morphological decomposition."""
+        entry = NormalizedLexicalEntry(
+            headword="λόγος",
+            lemma="λογος",
+            language=Language.GREEK,
+            pos=PartOfSpeech.NOUN,
+            stem="λογ",
+            suffix="ος",
+            source="morpheus",
+        )
+        assert entry.stem == "λογ"
+        assert entry.suffix == "ος"
+
+    def test_latin_stem_type_field(self):
+        """Can set Latin stem type."""
+        entry = NormalizedLexicalEntry(
+            headword="terra",
+            lemma="terra",
+            language=Language.LATIN,
+            pos=PartOfSpeech.NOUN,
+            gender=Gender.FEMININE,
+            declension=1,
+            latin_stem_type=LatinStemType.A_AE,
+            stem="terr",
+            suffix="a",
+            source="morpheus",
+        )
+        assert entry.latin_stem_type == "a_ae"
+
+    def test_greek_stem_type_field(self):
+        """Can set Greek stem type."""
+        entry = NormalizedLexicalEntry(
+            headword="λόγος",
+            lemma="λογος",
+            language=Language.GREEK,
+            pos=PartOfSpeech.NOUN,
+            gender=Gender.MASCULINE,
+            declension=2,
+            greek_stem_type=GreekStemType.OS_OU,
+            stem="λογ",
+            suffix="ος",
+            source="morpheus",
+        )
+        assert entry.greek_stem_type == "os_ou"
+
+    def test_dialect_field(self):
+        """Can set Greek dialect."""
+        entry = NormalizedLexicalEntry(
+            headword="μῆνιν",
+            lemma="μηνις",
+            language=Language.GREEK,
+            pos=PartOfSpeech.NOUN,
+            dialect=GreekDialect.HOMERIC,
+            source="lsj",
+        )
+        assert entry.dialect == "homeric"
+
+    def test_latin_third_declension_i_stem(self):
+        """Can represent Latin third declension i-stem."""
+        entry = NormalizedLexicalEntry(
+            headword="turris",
+            lemma="turris",
+            language=Language.LATIN,
+            pos=PartOfSpeech.NOUN,
+            gender=Gender.FEMININE,
+            declension=3,
+            genitive="-is",
+            latin_stem_type=LatinStemType.I_STEM_PURE,
+            stem="turr",
+            suffix="is",
+            source="whitakers",
+        )
+        assert entry.latin_stem_type == "i_stem_pure"
+        assert entry.declension == 3
+
+    def test_greek_third_declension_dental_stem(self):
+        """Can represent Greek third declension dental stem."""
+        entry = NormalizedLexicalEntry(
+            headword="χάρις",
+            lemma="χαρις",
+            language=Language.GREEK,
+            pos=PartOfSpeech.NOUN,
+            gender=Gender.FEMININE,
+            declension=3,
+            genitive="-ιτος",
+            greek_stem_type=GreekStemType.T_TOS,
+            stem="χαριτ",
+            suffix="ς",
+            source="morpheus",
+        )
+        assert entry.greek_stem_type == "t_tos"
+
+    def test_json_round_trip_with_morpheus_fields(self):
+        """Entry with Morpheus-parity fields survives JSON round-trip."""
+        entry = NormalizedLexicalEntry(
+            headword="λόγος",
+            lemma="λογος",
+            language=Language.GREEK,
+            pos=PartOfSpeech.NOUN,
+            senses=["word", "speech"],
+            gender=Gender.MASCULINE,
+            declension=2,
+            greek_stem_type=GreekStemType.OS_OU,
+            stem="λογ",
+            suffix="ος",
+            dialect=GreekDialect.ATTIC,
+            source="morpheus",
+        )
+        json_str = entry.model_dump_json()
+        restored = NormalizedLexicalEntry.model_validate_json(json_str)
+        assert restored.greek_stem_type == "os_ou"
+        assert restored.stem == "λογ"
+        assert restored.suffix == "ος"
+        assert restored.dialect == "attic"
+
+
+class TestPOSOrdering:
+    """Test POS ordering for Morpheus parity."""
+
+    def test_pos_order_map_complete(self):
+        """All POS values have ordering."""
+        for pos in PartOfSpeech:
+            assert pos in POS_ORDER_MAP
+
+    def test_pos_order_values(self):
+        """POS ordering follows expected hierarchy."""
+        assert POS_ORDER_MAP[PartOfSpeech.NOUN] < POS_ORDER_MAP[PartOfSpeech.VERB]
+        assert POS_ORDER_MAP[PartOfSpeech.VERB] < POS_ORDER_MAP[PartOfSpeech.ADJECTIVE]
+        assert POS_ORDER_MAP[PartOfSpeech.UNKNOWN] == 99
+
+    def test_get_pos_order(self):
+        """get_pos_order returns correct values."""
+        assert get_pos_order(PartOfSpeech.NOUN) == 1
+        assert get_pos_order(PartOfSpeech.VERB) == 2
+        assert get_pos_order(PartOfSpeech.ADJECTIVE) == 3
+        assert get_pos_order(PartOfSpeech.UNKNOWN) == 99
+
+
+class TestDialectDisplay:
+    """Test dialect display mappings."""
+
+    def test_dialect_display_map_complete(self):
+        """All dialect values have display mappings."""
+        for dialect in GreekDialect:
+            assert dialect in DIALECT_DISPLAY_MAP
+
+    def test_dialect_display_values(self):
+        """Dialect display abbreviations are correct."""
+        assert DIALECT_DISPLAY_MAP[GreekDialect.ATTIC] is None  # Standard, no marking
+        assert DIALECT_DISPLAY_MAP[GreekDialect.IONIC] == "Ion."
+        assert DIALECT_DISPLAY_MAP[GreekDialect.HOMERIC] == "Hom."
+        assert DIALECT_DISPLAY_MAP[GreekDialect.DORIC] == "Dor."
+        assert DIALECT_DISPLAY_MAP[GreekDialect.AEOLIC] == "Aeol."
+        assert DIALECT_DISPLAY_MAP[GreekDialect.KOINE] == "Koine"
+        assert DIALECT_DISPLAY_MAP[GreekDialect.EPIC] == "epic"
+
+    def test_get_dialect_display(self):
+        """get_dialect_display returns correct values."""
+        assert get_dialect_display(GreekDialect.ATTIC) is None
+        assert get_dialect_display(GreekDialect.HOMERIC) == "Hom."
+        assert get_dialect_display(GreekDialect.IONIC) == "Ion."
