@@ -6,6 +6,7 @@ NormalizedLexicalEntry model, handling headword reconstruction, POS mapping,
 and sense cleaning.
 """
 
+from autocom.core.normalizers.lewis_short import LewisShortNormalizer
 from autocom.core.normalizers.whitakers import WhitakersNormalizer
 
-__all__ = ["WhitakersNormalizer"]
+__all__ = ["WhitakersNormalizer", "LewisShortNormalizer"]
