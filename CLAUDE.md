@@ -108,3 +108,23 @@ that appear in Lewis & Short definitions.
 - Supports enclitic stripping (que, ne, ve)
 - Maintains capitalization in lemmas for proper nouns
 - Extensible backend system for morphological analysis
+
+## Beads Usage
+
+When working on an issue, use `bd update` liberally to record:
+- What you discovered about the codebase
+- Design decisions and why you made them
+- What you tried that didn't work
+- Dependencies or blockers you found
+- Test cases you identified
+
+This is your persistent memory. Future sessions (including after compaction)
+will have this context. Write notes as if explaining to yourself tomorrow.
+
+**IMPORTANT**: Before closing any beads issue, always point the user to relevant output for review:
+- Generated PDFs: `output/<name>/commentary.pdf`
+- Error/missing definitions: `output/<name>/missing_definitions.json`
+- LaTeX source: `output/<name>/commentary.tex`
+- Test results: Run and show pytest output
+
+Never close an issue until the user has had a chance to review the output.
