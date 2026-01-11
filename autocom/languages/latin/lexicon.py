@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import requests
 
 from autocom.core.models import Gloss, Line, Token
+from autocom.languages.latin.cache import DictionaryCache, get_dictionary_cache
 
 
 class LatinLexicon:
@@ -41,12 +42,18 @@ class LatinLexicon:
         api_timeout: float = 3.0,
         generate_baseline: bool = False,
         primary_source: str = "whitakers",
+        enable_cache: bool = True,
+        cache: Optional[DictionaryCache] = None,
     ) -> None:
         self.max_senses = max_senses
         self.enable_api_fallbacks = enable_api_fallbacks
         self.api_timeout = api_timeout
         self._generate_baseline = generate_baseline
         self._primary_source = primary_source
+
+        # Persistent dictionary cache
+        self._enable_cache = enable_cache
+        self._cache = cache if cache is not None else (get_dictionary_cache() if enable_cache else None)
 
         # Lewis & Short setup
         self._lewis_short_dir = data_dir or self._default_lewis_short_dir()
@@ -56,7 +63,7 @@ class LatinLexicon:
         self._latin_wordnet_base = "https://latinwordnet.exeter.ac.uk/api"
         self._latin_simple_base = "https://www.latin-is-simple.com/api"
 
-        # Caches for API responses
+        # In-memory caches (kept for backward compatibility, but persistent cache preferred)
         self._api_cache: Dict[str, List[str]] = {}
 
         # Whitaker's Words setup
@@ -722,6 +729,13 @@ class LatinLexicon:
         if not self.enable_api_fallbacks:
             return []
 
+        # Check persistent cache first
+        if self._cache:
+            cached = self._cache.get(lemma, "wordnet_api")
+            if cached is not None:
+                return cached.get("senses", [])
+
+        # Fallback to in-memory cache
         cache_key = f"wordnet:{lemma}"
         if cache_key in self._api_cache:
             return self._api_cache[cache_key]
@@ -743,12 +757,18 @@ class LatinLexicon:
                             if defn and defn not in definitions:
                                 definitions.append(defn)
 
+                # Save to persistent cache with TTL
+                if self._cache:
+                    self._cache.set(lemma, "wordnet_api", {"senses": definitions}, use_ttl=True)
                 self._api_cache[cache_key] = definitions
                 return definitions
 
         except Exception:
             pass
 
+        # Cache empty result
+        if self._cache:
+            self._cache.set(lemma, "wordnet_api", {"senses": []}, use_ttl=True)
         self._api_cache[cache_key] = []
         return []
 
@@ -757,6 +777,13 @@ class LatinLexicon:
         if not self.enable_api_fallbacks:
             return []
 
+        # Check persistent cache first
+        if self._cache:
+            cached = self._cache.get(lemma, "simple_api")
+            if cached is not None:
+                return cached.get("senses", [])
+
+        # Fallback to in-memory cache
         cache_key = f"simple:{lemma}"
         if cache_key in self._api_cache:
             return self._api_cache[cache_key]
@@ -783,12 +810,18 @@ class LatinLexicon:
                         if meaning:
                             definitions.append(meaning)
 
+                # Save to persistent cache with TTL
+                if self._cache:
+                    self._cache.set(lemma, "simple_api", {"senses": definitions}, use_ttl=True)
                 self._api_cache[cache_key] = definitions
                 return definitions
 
         except Exception:
             pass
 
+        # Cache empty result
+        if self._cache:
+            self._cache.set(lemma, "simple_api", {"senses": []}, use_ttl=True)
         self._api_cache[cache_key] = []
         return []
 
@@ -895,6 +928,12 @@ class LatinLexicon:
         if self._whitaker is None:
             return result
 
+        # Check persistent cache first
+        if self._cache:
+            cached = self._cache.get(word, "whitakers")
+            if cached is not None:
+                return cached
+
         query_variants = self._get_query_variants(word)
 
         for q in query_variants:
@@ -974,8 +1013,14 @@ class LatinLexicon:
 
                     # Return as soon as we have senses
                     if result["senses"]:
+                        # Save to persistent cache (no TTL for offline dictionaries)
+                        if self._cache:
+                            self._cache.set(word, "whitakers", result, use_ttl=False)
                         return result
 
+        # Cache empty result to avoid repeated failed lookups
+        if self._cache:
+            self._cache.set(word, "whitakers", result, use_ttl=False)
         return result
 
     def enrich_token(self, token: Token, frequency: Optional[int] = None) -> Token:
@@ -1105,6 +1150,31 @@ class LatinLexicon:
             frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
         """
         return [self.enrich_line(line, frequency_map) for line in lines]
+
+    def get_cache_stats(self) -> Optional[Dict[str, Any]]:
+        """Get dictionary cache statistics.
+
+        Returns:
+            Cache stats dict or None if caching is disabled
+        """
+        if self._cache:
+            return self._cache.get_stats()
+        return None
+
+    def clear_cache(self, source: Optional[str] = None) -> int:
+        """Clear dictionary cache entries.
+
+        Args:
+            source: If provided, only clear entries from this source
+                    (whitakers, wordnet_api, simple_api).
+                    If None, clear all entries.
+
+        Returns:
+            Number of entries removed, or 0 if caching is disabled
+        """
+        if self._cache:
+            return self._cache.clear(source)
+        return 0
 
 
 class LatinLexiconService:

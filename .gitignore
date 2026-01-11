@@ -141,6 +141,8 @@ output/
 # Cache files
 .autocom/
 ~/.autocom/
+.dictionary_cache/
+.api_cache/
 
 # JSON files
 **/definitions_cache.json
