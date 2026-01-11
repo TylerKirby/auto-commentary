@@ -171,8 +171,9 @@ class GreekLexiconService:
     def __init__(self) -> None:
         self.lexicon = GreekLexicon()
 
-    def enrich(self, lines) -> List[Any]:  # List[Line]
+    def enrich(self, lines, frequency_map: Optional[Dict[str, int]] = None) -> List[Any]:  # List[Line]
         """Enrich lines with Greek glosses - matches LatinLexicon interface."""
+        # TODO: Use frequency_map for frequency annotations (part of Greek parity epic)
         return self.lexicon.enrich_lines(lines)
 
     def get_definition(self, lemma: str) -> Optional[str]:

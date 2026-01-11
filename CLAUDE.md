@@ -38,6 +38,33 @@ python -m autocom.cli.main render examples/sample_latin_excerpt.txt --pdf  # Gen
 python -m autocom.cli.main commentary examples/sample_latin_excerpt.txt --pdf  # Full commentary generation
 ```
 
+### Generating Sample Output
+**Convention**: Always output to `output/<descriptive_name>/` (gitignored).
+
+```bash
+# Latin sample
+python -m autocom.cli.main commentary examples/sample_latin_short.txt --pdf --output output/latin_sample
+
+# Greek sample
+python -m autocom.cli.main commentary examples/sample_greek.txt --pdf --output output/greek_sample
+
+# Testing a specific fix
+python -m autocom.cli.main commentary examples/sample_latin_short.txt --pdf --output output/headword_test
+```
+
+**Directory structure**:
+- `examples/` - Source texts (tracked in git)
+- `output/` - Generated artifacts (gitignored)
+  - `output/<name>/commentary.pdf` - Rendered PDF
+  - `output/<name>/commentary.tex` - LaTeX source
+  - `output/<name>/missing_definitions.json` - Words without definitions
+
+**Sample texts available**:
+- `examples/sample_latin_short.txt` - Aeneid I.1-4 (Latin)
+- `examples/sample_greek.txt` - Iliad I.1-3 (Greek)
+- `examples/sample_greek_longer.txt` - Extended Greek passage
+- `examples/sample_latin_text.txt` - Longer Latin passage
+
 ## Project Architecture
 
 ### Core Pipeline
