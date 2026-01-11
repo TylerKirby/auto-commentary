@@ -14,7 +14,9 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 
+from autocom.core.lexical import NormalizedLexicalEntry
 from autocom.core.models import Gloss, Line, Token
+from autocom.core.normalizers import LewisShortNormalizer, WhitakersNormalizer
 from autocom.languages.latin.cache import DictionaryCache, get_dictionary_cache
 
 
@@ -73,6 +75,10 @@ class LatinLexicon:
             self._whitaker: Optional[Any] = WhitakerParser()
         except Exception:  # pragma: no cover - env dependent
             self._whitaker = None
+
+        # Normalizers for converting raw dictionary data to NormalizedLexicalEntry
+        self._whitakers_normalizer = WhitakersNormalizer()
+        self._lewis_short_normalizer = LewisShortNormalizer(max_senses=max_senses)
 
     @staticmethod
     def _default_lewis_short_dir() -> str:
@@ -724,6 +730,50 @@ class LatinLexicon:
 
         return result
 
+    def lookup_normalized(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
+        """Look up a lemma and return a NormalizedLexicalEntry.
+
+        Uses the normalization layer to produce canonical lexical entries.
+        The lookup order depends on self._primary_source.
+
+        Args:
+            lemma: The lemma to look up
+
+        Returns:
+            NormalizedLexicalEntry if found, None otherwise
+        """
+        if not lemma or len(lemma) < 2:
+            return None
+
+        if self._primary_source == "whitakers":
+            # Try Whitaker's first
+            if self._whitaker:
+                metadata = self._lookup_whitaker_with_metadata(lemma)
+                if metadata.get("senses"):
+                    return self._whitakers_normalizer.normalize_from_metadata(
+                        metadata, original_word=lemma
+                    )
+
+            # Fall back to Lewis & Short
+            entry = self._get_lewis_short_entry(lemma)
+            if entry:
+                return self._lewis_short_normalizer.normalize(entry, lemma)
+        else:
+            # Lewis & Short primary
+            entry = self._get_lewis_short_entry(lemma)
+            if entry:
+                return self._lewis_short_normalizer.normalize(entry, lemma)
+
+            # Fall back to Whitaker's
+            if self._whitaker:
+                metadata = self._lookup_whitaker_with_metadata(lemma)
+                if metadata.get("senses"):
+                    return self._whitakers_normalizer.normalize_from_metadata(
+                        metadata, original_word=lemma
+                    )
+
+        return None
+
     def _try_latin_wordnet_api(self, lemma: str) -> List[str]:
         """Query Latin WordNet API for definitions."""
         if not self.enable_api_fallbacks:
@@ -1024,107 +1074,52 @@ class LatinLexicon:
         return result
 
     def enrich_token(self, token: Token, frequency: Optional[int] = None) -> Token:
-        """Enrich a token with dictionary information.
+        """Enrich a token with dictionary information using the normalization layer.
 
         Args:
             token: The token to enrich
             frequency: Optional occurrence count for this lemma in the text
 
-        The fallback order depends on self._primary_source:
-        - "whitakers": Whitaker's -> Lewis & Short -> APIs
-        - "lewis_short": Lewis & Short -> APIs -> Whitaker's
+        Uses lookup_normalized() for primary lookups, falling back to API
+        lookups when offline dictionaries don't have the entry.
         """
         if token.is_punct:
             return token
+
         lemma = token.analysis.lemma if token.analysis else token.text
 
-        result: Dict[str, Any] = {"senses": []}
+        # Layer 1: Try normalized lookup (Whitaker's or L&S based on primary_source)
+        entry = self.lookup_normalized(lemma)
 
-        if self._primary_source == "whitakers":
-            # Whitaker's Words primary flow
-            # Layer 1: Whitaker's Words (primary - offline, pedagogical)
-            result = self._lookup_whitaker_with_metadata(lemma)
+        # Layer 2: API fallbacks (return senses only, no full normalization)
+        api_senses: List[str] = []
+        if not entry and self.enable_api_fallbacks:
+            api_senses = self._try_latin_wordnet_api(lemma)
+            if not api_senses:
+                api_senses = self._try_latin_simple_api(lemma)
 
-            # Layer 2: Lewis & Short (fallback for missing entries)
-            if not result.get("senses"):
-                ls_result = self.lookup_with_metadata(lemma)
-                result["senses"] = ls_result.get("senses", [])
-                # Merge any available Lewis & Short metadata if not already set
-                for key in ["headword", "genitive", "gender", "pos_abbrev", "principal_parts"]:
-                    if ls_result.get(key) and not result.get(key):
-                        result[key] = ls_result[key]
+        # Layer 3: Try alternative lemmas (morphological guesses)
+        if not entry and not api_senses:
+            alternatives = self._get_alternative_lemmas(token.text, lemma)
+            for alt_lemma in alternatives:
+                entry = self.lookup_normalized(alt_lemma)
+                if entry:
+                    # Update the lemma in analysis to the working one
+                    if token.analysis:
+                        token.analysis.lemma = alt_lemma
+                    lemma = alt_lemma
+                    break
 
-            # Layer 3: Latin WordNet API (optional fallback)
-            if not result.get("senses") and self.enable_api_fallbacks:
-                result["senses"] = self._try_latin_wordnet_api(lemma)
-
-            # Layer 4: Latin is Simple API (optional fallback)
-            if not result.get("senses") and self.enable_api_fallbacks:
-                result["senses"] = self._try_latin_simple_api(lemma)
-
-            # Layer 5: Try alternative lemmas (morphological guesses)
-            if not result.get("senses"):
-                alternatives = self._get_alternative_lemmas(token.text, lemma)
-                for alt_lemma in alternatives:
-                    alt_result = self._lookup_whitaker_with_metadata(alt_lemma)
-                    if not alt_result.get("senses"):
-                        alt_result = self.lookup_with_metadata(alt_lemma)
-                    if alt_result.get("senses"):
-                        result = alt_result
-                        # Update the lemma in analysis to the working one
-                        if token.analysis:
-                            token.analysis.lemma = alt_lemma
-                        lemma = alt_lemma
-                        break
-
+        # Build Gloss from normalized entry or fallback
+        if entry:
+            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
+        elif api_senses:
+            # API results don't have full metadata, create minimal Gloss
+            token.gloss = Gloss(lemma=lemma, senses=api_senses, frequency=frequency)
         else:
-            # Lewis & Short primary flow (original behavior)
-            # Layer 1: Lewis & Short (primary)
-            result = self.lookup_with_metadata(lemma)
+            # No definition found
+            token.gloss = Gloss(lemma=lemma, senses=[], frequency=frequency)
 
-            # Layer 2: Latin WordNet API (modern fallback)
-            if not result.get("senses"):
-                result["senses"] = self._try_latin_wordnet_api(lemma)
-
-            # Layer 3: Latin is Simple API (fast fallback)
-            if not result.get("senses"):
-                result["senses"] = self._try_latin_simple_api(lemma)
-
-            # Layer 4: Whitaker's Words (offline fallback)
-            if not result.get("senses"):
-                whitaker_result = self._lookup_whitaker_with_metadata(lemma)
-                result["senses"] = whitaker_result.get("senses", [])
-                # Merge Whitaker metadata if not already set
-                for key in ["headword", "genitive", "gender", "pos_abbrev", "principal_parts"]:
-                    if whitaker_result.get(key) and not result.get(key):
-                        result[key] = whitaker_result[key]
-
-            # Layer 5: Try alternative lemmas (morphological guesses)
-            if not result.get("senses"):
-                alternatives = self._get_alternative_lemmas(token.text, lemma)
-                for alt_lemma in alternatives:
-                    alt_result = self.lookup_with_metadata(alt_lemma)
-                    if not alt_result.get("senses"):
-                        alt_result = self._lookup_whitaker_with_metadata(alt_lemma)
-                    if alt_result.get("senses"):
-                        result = alt_result
-                        # Update the lemma in analysis to the working one
-                        if token.analysis:
-                            token.analysis.lemma = alt_lemma
-                        lemma = alt_lemma
-                        break
-
-        # Build Gloss with Steadman-style metadata
-        token.gloss = Gloss(
-            lemma=lemma,
-            senses=result.get("senses", []),
-            headword=result.get("headword"),
-            genitive=result.get("genitive"),
-            gender=result.get("gender"),
-            pos_abbrev=result.get("pos_abbrev"),
-            principal_parts=result.get("principal_parts"),
-            frequency=frequency,
-        )
         return token
 
     def enrich_line(self, line: Line, frequency_map: Optional[Dict[str, int]] = None) -> Line:
