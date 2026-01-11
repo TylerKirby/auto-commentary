@@ -162,6 +162,58 @@ that appear in Lewis & Short definitions.
 - Maintains capitalization in lemmas for proper nouns
 - Extensible backend system for morphological analysis
 
+## Development Practices
+
+### Test-Driven Development (TDD)
+
+This project follows TDD. When implementing new features or fixing bugs:
+
+1. **Write tests first** - Before writing implementation code, write failing tests that define the expected behavior
+2. **Run tests to confirm failure** - Verify the tests fail for the right reasons
+3. **Implement the minimum code** - Write just enough code to make tests pass
+4. **Refactor** - Clean up while keeping tests green
+5. **Repeat** - Add more tests for edge cases and additional requirements
+
+```bash
+# Run tests frequently during development
+pytest tests/path/to/test_file.py -v  # Run specific test file
+pytest -x                              # Stop on first failure
+pytest --lf                            # Run last failed tests
+```
+
+### Beads Acceptance Criteria
+
+When creating beads issues, include detailed acceptance criteria that define "done":
+
+```bash
+bd create --title="Add Greek article display" --type=task --priority=2 --body="
+## Description
+Display the appropriate Greek article (ὁ, ἡ, τό) before noun headwords.
+
+## Acceptance Criteria
+- [ ] Masculine nouns display ὁ (e.g., ὁ λόγος)
+- [ ] Feminine nouns display ἡ (e.g., ἡ θεά)
+- [ ] Neuter nouns display τό (e.g., τό ἔργον)
+- [ ] Verbs and other POS do not display articles
+- [ ] Article appears in rendered PDF glossary
+
+## Test Cases
+- Test masculine 2nd declension noun
+- Test feminine 1st declension noun
+- Test neuter 3rd declension noun
+- Test verb (no article)
+
+## Out of Scope
+- Dual/plural article forms
+- Article agreement with adjectives
+"
+```
+
+Good acceptance criteria are:
+- **Specific** - Clear pass/fail conditions
+- **Testable** - Can be verified with automated tests
+- **Scoped** - Explicitly states what's NOT included
+
 ## Beads Usage
 
 When working on an issue, use `bd update` liberally to record:
