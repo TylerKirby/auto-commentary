@@ -730,6 +730,54 @@ class LatinLexicon:
 
         return result
 
+    def _lookup_whitaker_normalized(self, word: str) -> Optional[NormalizedLexicalEntry]:
+        """Look up word in Whitaker's and return a properly normalized entry.
+
+        This method calls normalize_lexeme directly on raw Whitaker's output,
+        which performs full headword reconstruction from stems.
+
+        Args:
+            word: The word to look up
+
+        Returns:
+            NormalizedLexicalEntry with reconstructed headword, or None
+        """
+        if self._whitaker is None:
+            return None
+
+        query_variants = self._get_query_variants(word)
+
+        for q in query_variants:
+            try:
+                parsed = self._whitaker.parse(q)
+            except Exception:
+                continue
+
+            for form in getattr(parsed, "forms", []) or []:
+                form_analyses = getattr(form, "analyses", [])
+                analyses = list(form_analyses.values()) if isinstance(form_analyses, dict) else form_analyses or []
+
+                for analysis in analyses:
+                    lexeme = getattr(analysis, "lexeme", None)
+                    if lexeme is None:
+                        continue
+
+                    # Check if lexeme has senses
+                    raw_senses = getattr(lexeme, "senses", [])
+                    if isinstance(raw_senses, str):
+                        raw_senses = [raw_senses]
+                    if not raw_senses:
+                        continue
+
+                    # Use normalize_lexeme for full headword reconstruction
+                    entry = self._whitakers_normalizer.normalize_lexeme(
+                        lexeme, original_word=word
+                    )
+                    if entry and entry.senses:
+                        return entry
+
+        return None
+
     def lookup_normalized(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
         """Look up a lemma and return a NormalizedLexicalEntry.
 
@@ -746,13 +794,11 @@ class LatinLexicon:
             return None
 
         if self._primary_source == "whitakers":
-            # Try Whitaker's first
+            # Try Whitaker's first (with full headword reconstruction)
             if self._whitaker:
-                metadata = self._lookup_whitaker_with_metadata(lemma)
-                if metadata.get("senses"):
-                    return self._whitakers_normalizer.normalize_from_metadata(
-                        metadata, original_word=lemma
-                    )
+                entry = self._lookup_whitaker_normalized(lemma)
+                if entry:
+                    return entry
 
             # Fall back to Lewis & Short
             entry = self._get_lewis_short_entry(lemma)
@@ -764,13 +810,11 @@ class LatinLexicon:
             if entry:
                 return self._lewis_short_normalizer.normalize(entry, lemma)
 
-            # Fall back to Whitaker's
+            # Fall back to Whitaker's (with full headword reconstruction)
             if self._whitaker:
-                metadata = self._lookup_whitaker_with_metadata(lemma)
-                if metadata.get("senses"):
-                    return self._whitakers_normalizer.normalize_from_metadata(
-                        metadata, original_word=lemma
-                    )
+                entry = self._lookup_whitaker_normalized(lemma)
+                if entry:
+                    return entry
 
         return None
 

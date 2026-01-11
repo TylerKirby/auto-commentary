@@ -426,7 +426,9 @@ class NormalizedLexicalEntry(BaseModel):
     verb_voice: Optional[VerbVoice] = Field(None, description="Voice category (active, passive, middle, deponent)")
 
     # Verbal morphology - Latin specific
-    conjugation: Optional[int] = Field(None, ge=1, le=4, description="Latin conjugation class (1-4)")
+    conjugation: Optional[int] = Field(
+        None, ge=1, le=9, description="Latin conjugation class (1-4 regular, 5-9 irregular: ESSE, IRE, FERO, VOLO, EDO)"
+    )
     latin_principal_parts: Optional[LatinPrincipalParts] = Field(
         None, description="Structured Latin principal parts"
     )

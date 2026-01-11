@@ -428,6 +428,9 @@ class WhitakersNormalizer:
         elif wt_name == "V":
             entry_kwargs["conjugation"] = decl_or_conj
             entry_kwargs["verb_voice"] = self._determine_voice(roots, senses)
+            # Mark irregular verbs (conjugation > 4: ESSE, IRE, FERO, VOLO, EDO types)
+            if decl_or_conj and decl_or_conj > 4:
+                entry_kwargs["is_irregular"] = True
             # Build principal parts from roots
             pp = self._build_principal_parts(roots, decl_or_conj, headword)
             if pp:
