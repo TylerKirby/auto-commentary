@@ -14,7 +14,7 @@ source venv/bin/activate
 Run tests with pytest:
 ```bash
 pytest  # Run all tests
-pytest tests/languages/latin/test_cache.py  # Run specific test file
+pytest tests/core/test_lexical.py  # Run specific test file
 pytest -m "not slow"  # Skip slow tests
 pytest -m "not whitakers"  # Skip tests requiring whitakers_words
 pytest -m "not cltk"  # Skip tests requiring CLTK
@@ -57,6 +57,32 @@ Core data structures defined in `autocom/core/models.py`:
 - `Document`: Full document with metadata and language info
 - `Analysis`: Morphological analysis (lemma, POS tags)
 - `Gloss`: Dictionary definitions for lemmas (headword, genitive, gender, pos_abbrev, principal_parts, senses)
+
+### Lexical Normalization Layer
+The normalization layer (`autocom/core/lexical.py`) provides a canonical internal representation for dictionary entries, decoupling raw extraction from rendering.
+
+**Core Types** (`autocom/core/lexical.py`):
+- `NormalizedLexicalEntry`: Canonical dictionary entry with headword, lemma, POS, senses, and morphological metadata
+- `PartOfSpeech`: Standardized POS enum (NOUN, VERB, ADJECTIVE, etc.)
+- `Gender`: Grammatical gender (MASCULINE, FEMININE, NEUTER, COMMON)
+- `VerbVoice`: Voice categories including DEPONENT and SEMI_DEPONENT
+- `LatinPrincipalParts`: Structured verb forms (present, infinitive, perfect, supine)
+- `GreekPrincipalParts`: Six Greek principal parts with tense stems
+- `GreekVerbClass`: Verb classifications (OMEGA, MI, CONTRACT_ALPHA, etc.)
+- `LatinStemType` / `GreekStemType`: Morpheus-compatible stem classifications
+
+**Normalizers** (`autocom/core/normalizers/`):
+- `WhitakersNormalizer`: Transforms Whitaker's Words output to `NormalizedLexicalEntry`
+  - Reconstructs headwords from stems for all word types
+  - Maps POS and gender codes to standard enums
+  - Extracts and structures principal parts for verbs
+  - Cleans senses (removes brackets, citations, normalizes whitespace)
+  - Detects deponent/semi-deponent verbs and pluralia tantum nouns
+
+**Architecture Flow**:
+```
+Raw Extraction (source-specific) → Normalizer → NormalizedLexicalEntry → Gloss → Rendering
+```
 
 ### Latin Processing
 The `LatinAnalyzer` in `autocom/pipeline/analyze.py` supports multiple backends:
