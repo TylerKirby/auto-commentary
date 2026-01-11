@@ -129,7 +129,7 @@ class Gloss(BaseModel):
         elif entry.greek_principal_parts:
             # For Greek, format the tense stems
             gpp = entry.greek_principal_parts
-            parts = [p for p in [gpp.future, gpp.aorist, gpp.perfect_active, gpp.perfect_mp, gpp.aorist_passive] if p]
+            parts = [p for p in [gpp.future, gpp.aorist, gpp.perfect_active, gpp.perfect_middle, gpp.aorist_passive] if p]
             if parts:
                 principal_parts_str = ", ".join(parts)
 
