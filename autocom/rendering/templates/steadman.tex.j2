@@ -37,12 +37,8 @@
 \begin{multicols}{2}
 {% for token in doc.core_vocabulary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
-{% set has_definition = token.gloss.best %}
-{% if has_definition %}
+{% if token.gloss.best %}
 \textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency %}, {{ token.gloss.frequency }}{% endif %}
-
-{% else %}
-\textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
 
 {% endif %}
 {% endfor %}
@@ -77,14 +73,8 @@
 \begin{multicols}{2}
 {% for token in page.lines | sorted_glossary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
-{% set has_definition = token.gloss.best %}
-{% if has_definition %}
 \textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency and token.gloss.frequency > 1 %}, {{ token.gloss.frequency }}{% endif %}
 
-{% else %}
-\textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
-
-{% endif %}
 {% endfor %}
 \end{multicols}
 
