@@ -346,6 +346,30 @@ class GreekLexicon:
                     lemma = vocab_lemma  # Use the accented form
                     break
 
+        # Try stem-based matching for proper nouns (patronymics, names)
+        # This handles cases like Πηληϊάδεω (genitive) matching Πηληϊάδης (nominative)
+        if not vocab_entry and len(lemma) >= 5:
+            normalized = strip_accents_and_breathing(lemma).lower()
+            # Try matching stems by comparing prefixes
+            for vocab_lemma, entry_data in self._basic_vocabulary.items():
+                vocab_normalized = strip_accents_and_breathing(vocab_lemma).lower()
+                # Check if they share a significant common prefix (at least 5 chars)
+                # and the vocab entry is a proper noun (capitalized)
+                if vocab_lemma[0].isupper() and len(vocab_normalized) >= 5:
+                    # Find common prefix length
+                    common_len = 0
+                    for i in range(min(len(normalized), len(vocab_normalized))):
+                        if normalized[i] == vocab_normalized[i]:
+                            common_len += 1
+                        else:
+                            break
+                    # If >70% of shorter word matches, consider it a stem match
+                    min_len = min(len(normalized), len(vocab_normalized))
+                    if common_len >= 5 and common_len >= min_len * 0.7:
+                        vocab_entry = entry_data
+                        lemma = vocab_lemma
+                        break
+
         if not vocab_entry:
             return None
 
