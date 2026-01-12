@@ -22,7 +22,7 @@ from autocom.core.lexical import (
 from autocom.core.models import Gloss, Line, Token
 from autocom.core.normalizers.morpheus import MorpheusNormalizer
 
-from .text_processing import strip_accents_and_breathing
+from .text_processing import greek_to_ascii, strip_accents_and_breathing
 
 
 class GreekLexicon:
@@ -369,7 +369,14 @@ class GreekLexicon:
         )
 
     def _lookup_perseus_morpheus(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
-        """Look up lemma using Perseus Morpheus API."""
+        """Look up lemma using Perseus Morpheus API.
+
+        The Morpheus API returns morphological data including the proper lemma
+        (dictionary headword). This method:
+        1. Queries Morpheus to get candidate lemmas for an inflected form
+        2. Tries each candidate against our basic vocabulary
+        3. Returns the first match with definitions, or falls back to first candidate
+        """
         try:
             # Perseus expects beta code or transliterated forms for some lookups
             # Try multiple query variants
@@ -382,17 +389,63 @@ class GreekLexicon:
                 if response.status_code != 200:
                     continue
 
-                # Parse XML response
-                morpheus_data, senses = self._parse_morpheus_xml(response.text, lemma)
+                # Parse XML response - now returns list of candidates
+                candidates = self._parse_morpheus_xml(response.text, lemma)
 
-                if morpheus_data:
-                    entry = self._normalizer.normalize(
-                        morpheus_data,
-                        original_word=lemma,
-                        senses=senses,
-                    )
-                    if entry and entry.senses:
-                        return entry
+                if not candidates:
+                    continue
+
+                # Try each candidate and prefer ones with vocabulary definitions
+                best_entry = None
+                best_senses: List[str] = []
+
+                for morpheus_data in candidates:
+                    morpheus_lemma = morpheus_data.get("lemma")
+                    if not morpheus_lemma:
+                        continue
+
+                    # Look up definitions using this candidate lemma
+                    vocab_entry = self._basic_vocabulary.get(morpheus_lemma)
+                    if not vocab_entry:
+                        # Try accent-stripped matching
+                        normalized = strip_accents_and_breathing(morpheus_lemma).lower()
+                        for vocab_lemma, entry_data in self._basic_vocabulary.items():
+                            if strip_accents_and_breathing(vocab_lemma).lower() == normalized:
+                                vocab_entry = entry_data
+                                break
+
+                    if vocab_entry:
+                        senses = vocab_entry.get("senses", [])
+                        # Merge vocabulary data into morpheus_data
+                        if not morpheus_data.get("genitive") and vocab_entry.get("genitive"):
+                            morpheus_data["genitive"] = vocab_entry["genitive"]
+                        if not morpheus_data.get("decl") and vocab_entry.get("decl"):
+                            morpheus_data["decl"] = vocab_entry["decl"]
+                        if not morpheus_data.get("principal_parts") and vocab_entry.get("principal_parts"):
+                            morpheus_data["principal_parts"] = vocab_entry["principal_parts"]
+
+                        entry = self._normalizer.normalize(
+                            morpheus_data,
+                            original_word=lemma,
+                            senses=senses,
+                        )
+                        if entry and entry.senses:
+                            # Found a candidate with definitions - return immediately
+                            return entry
+
+                    # Keep track of first valid entry as fallback
+                    if best_entry is None:
+                        entry = self._normalizer.normalize(
+                            morpheus_data,
+                            original_word=lemma,
+                            senses=[],
+                        )
+                        if entry and entry.headword:
+                            best_entry = entry
+
+                # Return best entry found (even without senses)
+                if best_entry:
+                    return best_entry
 
         except Exception:
             pass
@@ -400,8 +453,20 @@ class GreekLexicon:
         return None
 
     def _get_query_variants(self, lemma: str) -> List[str]:
-        """Get query variants for a lemma (with/without accents, etc.)."""
-        variants = [lemma]
+        """Get query variants for a lemma (with/without accents, etc.).
+
+        The Perseus Morpheus API works best with ASCII transliteration,
+        so we prioritize that variant first.
+        """
+        variants = []
+
+        # ASCII transliteration works best with Morpheus API (prioritize this)
+        ascii_form = greek_to_ascii(lemma)
+        if ascii_form:
+            variants.append(ascii_form)
+
+        # Also try original form
+        variants.append(lemma)
 
         # Add unaccented version
         unaccented = strip_accents_and_breathing(lemma)
@@ -415,25 +480,42 @@ class GreekLexicon:
 
         return list(dict.fromkeys(variants))  # Remove duplicates while preserving order
 
-    def _parse_morpheus_xml(self, xml_text: str, original_lemma: str) -> tuple[Dict[str, Any], List[str]]:
-        """Parse Morpheus XML response.
+    def _parse_morpheus_xml(self, xml_text: str, original_lemma: str) -> List[Dict[str, Any]]:
+        """Parse Morpheus XML response and return ALL candidate analyses.
 
         Returns:
-            Tuple of (morpheus_data dict, list of senses)
+            List of morpheus_data dicts, each representing one analysis.
+            The caller should select the best one (e.g., one with vocabulary match).
         """
-        morpheus_data: Dict[str, Any] = {}
-        senses: List[str] = []
+        candidates: List[Dict[str, Any]] = []
+        seen_lemmas: set = set()
 
         try:
             root = ET.fromstring(xml_text)
 
-            # Find analyses elements
+            # Collect ALL analyses (don't break on first match)
             for analysis in root.findall(".//analysis"):
-                # Get lemma/headword
-                hdwd = analysis.find("hdwd")
-                if hdwd is not None and hdwd.text:
-                    morpheus_data["lemma"] = hdwd.text
-                    morpheus_data["hdwd"] = hdwd.text
+                morpheus_data: Dict[str, Any] = {}
+
+                # Get lemma/headword - Morpheus returns <lemma> not <hdwd>
+                lemma_elem = analysis.find("lemma")
+                if lemma_elem is not None and lemma_elem.text:
+                    morpheus_data["lemma"] = lemma_elem.text
+                    morpheus_data["hdwd"] = lemma_elem.text
+                else:
+                    # Fallback to hdwd if present
+                    hdwd = analysis.find("hdwd")
+                    if hdwd is not None and hdwd.text:
+                        morpheus_data["lemma"] = hdwd.text
+                        morpheus_data["hdwd"] = hdwd.text
+
+                if not morpheus_data.get("lemma"):
+                    continue
+
+                # Skip duplicate lemmas
+                if morpheus_data["lemma"] in seen_lemmas:
+                    continue
+                seen_lemmas.add(morpheus_data["lemma"])
 
                 # Get part of speech
                 pos_elem = analysis.find("pos")
@@ -455,31 +537,12 @@ class GreekLexicon:
                 if stem_elem is not None and stem_elem.text:
                     morpheus_data["stem"] = stem_elem.text
 
-                # If we found valid data, break
-                if morpheus_data.get("lemma"):
-                    break
-
-            # Extract definitions (Morpheus doesn't always provide these)
-            for sense in root.findall(".//sense"):
-                if sense.text:
-                    cleaned = self._clean_sense(sense.text)
-                    if cleaned:
-                        senses.append(cleaned)
-
-            for defn in root.findall(".//def"):
-                if defn.text:
-                    cleaned = self._clean_sense(defn.text)
-                    if cleaned:
-                        senses.append(cleaned)
+                candidates.append(morpheus_data)
 
         except ET.ParseError:
             pass
 
-        # If no lemma found, use original
-        if not morpheus_data.get("lemma"):
-            morpheus_data["lemma"] = original_lemma
-
-        return morpheus_data, senses[:5]  # Limit senses
+        return candidates
 
     def _clean_sense(self, sense: str) -> str:
         """Clean a sense/definition string."""
@@ -526,26 +589,42 @@ class GreekLexicon:
         Args:
             token: The token to enrich
             frequency: Optional occurrence count for this lemma
+
+        The method tries multiple lookup strategies:
+        1. First tries the analyzer's lemma
+        2. If that fails or has no senses, tries the original word form
+        3. Falls back to alternative lemma guesses
         """
         if token.is_punct:
             return token
 
         lemma = token.analysis.lemma if token.analysis else token.text
+        entry = None
 
+        # Try analyzer's lemma first
         entry = self.lookup_normalized(lemma)
 
-        if entry:
-            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
-        else:
-            # Try alternative lookups
+        # If no senses found, try the original word form (often better with Morpheus)
+        if (not entry or not entry.senses) and token.text != lemma:
+            word_entry = self.lookup_normalized(token.text)
+            if word_entry and word_entry.senses:
+                entry = word_entry
+
+        # Still no senses? Try alternative lemma guesses
+        if not entry or not entry.senses:
             alternatives = self._get_alternative_lemmas(token.text, lemma)
             for alt in alternatives:
-                entry = self.lookup_normalized(alt)
-                if entry:
-                    token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
+                alt_entry = self.lookup_normalized(alt)
+                if alt_entry and alt_entry.senses:
+                    entry = alt_entry
                     break
 
-        if not token.gloss:
+        if entry and entry.senses:
+            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
+        elif entry:
+            # Entry exists but no senses
+            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
+        else:
             # No definition found
             token.gloss = Gloss(lemma=lemma, senses=[], frequency=frequency)
 
