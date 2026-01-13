@@ -26,7 +26,6 @@ from autocom.core.normalizers.morpheus import MorpheusNormalizer
 from autocom.languages.latin.cache import DictionaryCache, get_dictionary_cache
 
 from .data.dcc_loader import load_dcc_vocabulary
-from .data.middle_liddell_loader import load_middle_liddell_vocabulary
 from .text_processing import greek_to_ascii, strip_accents_and_breathing
 
 
@@ -65,29 +64,15 @@ class GreekLexicon:
         # Normalizer for converting API responses to NormalizedLexicalEntry
         self._normalizer = MorpheusNormalizer()
 
-        # Load vocabulary sources (in order of priority for overrides):
-        # 1. Middle Liddell (~34K entries) - comprehensive intermediate lexicon
-        # 2. DCC Greek Core (524 entries) - frequency data for common words
-        # 3. Basic vocabulary - curated entries with principal parts and Homeric terms
-
-        # Basic Greek vocabulary for additional entries and Homeric terms
-        self._basic_vocabulary = self._load_basic_vocabulary()
-
         # Load DCC Greek Core Vocabulary (524 most common words)
         # This provides ~70-80% coverage of typical Greek texts
         self._dcc_vocabulary = load_dcc_vocabulary()
 
-        # Load Middle Liddell (PRIMARY source - ~34K entries)
-        # This provides comprehensive coverage across all genres
-        self._middle_liddell_vocabulary = load_middle_liddell_vocabulary()
+        # Basic Greek vocabulary for additional entries and Homeric terms
+        self._basic_vocabulary = self._load_basic_vocabulary()
 
-        # Combined vocabulary: later sources override earlier ones
-        # Order: Middle Liddell -> DCC -> Basic (basic overrides all)
-        self._combined_vocabulary = {
-            **self._middle_liddell_vocabulary,  # Base: comprehensive coverage
-            **self._dcc_vocabulary,  # Override: better frequency data
-            **self._basic_vocabulary,  # Override: curated entries with principal parts
-        }
+        # Combined vocabulary: DCC takes precedence, then basic vocab
+        self._combined_vocabulary = {**self._basic_vocabulary, **self._dcc_vocabulary}
 
     def _normalize_cache_key(self, word: str) -> str:
         """Normalize a Greek word for cache key generation.
@@ -471,12 +456,11 @@ class GreekLexicon:
         return entry
 
     def _lookup_basic_vocabulary(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
-        """Look up lemma in combined vocabulary.
+        """Look up lemma in combined vocabulary (DCC + basic).
 
-        The combined vocabulary includes (in priority order):
-        - Middle Liddell (~34K entries) - comprehensive intermediate lexicon
-        - DCC Greek Core Vocabulary (524 words) - frequency data for common words
-        - Basic vocabulary - curated entries with principal parts and Homeric terms
+        The combined vocabulary includes:
+        - DCC Greek Core Vocabulary (524 words, ~70-80% coverage)
+        - Basic vocabulary with Homeric-specific terms
         """
         # Try exact match in combined vocabulary
         vocab_entry = self._combined_vocabulary.get(lemma)
