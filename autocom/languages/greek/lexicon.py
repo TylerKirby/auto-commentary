@@ -25,6 +25,7 @@ from autocom.core.models import Gloss, Line, Token
 from autocom.core.normalizers.morpheus import MorpheusNormalizer
 from autocom.languages.latin.cache import DictionaryCache, get_dictionary_cache
 
+from .data.dcc_loader import load_dcc_vocabulary
 from .text_processing import greek_to_ascii, strip_accents_and_breathing
 
 
@@ -63,8 +64,15 @@ class GreekLexicon:
         # Normalizer for converting API responses to NormalizedLexicalEntry
         self._normalizer = MorpheusNormalizer()
 
-        # Basic Greek vocabulary for offline fallback
+        # Load DCC Greek Core Vocabulary (524 most common words)
+        # This provides ~70-80% coverage of typical Greek texts
+        self._dcc_vocabulary = load_dcc_vocabulary()
+
+        # Basic Greek vocabulary for additional entries and Homeric terms
         self._basic_vocabulary = self._load_basic_vocabulary()
+
+        # Combined vocabulary: DCC takes precedence, then basic vocab
+        self._combined_vocabulary = {**self._basic_vocabulary, **self._dcc_vocabulary}
 
     def _normalize_cache_key(self, word: str) -> str:
         """Normalize a Greek word for cache key generation.
@@ -327,6 +335,68 @@ class GreekLexicon:
                 "decl": 1,
                 "senses": ["mighty", "stout", "valiant"],
             },
+            # ========================================================================
+            # Core vocabulary missing from DCC (identified by language expert)
+            # ========================================================================
+            "Ζεύς": {
+                "pos": "noun",
+                "gender": "masc",
+                "decl": 3,
+                "senses": ["Zeus", "king of the gods"],
+                "genitive": "Διός",
+            },
+            "τελέω": {
+                "pos": "verb",
+                "senses": ["to complete", "accomplish", "fulfill", "perform (a rite)"],
+                "principal_parts": {
+                    "present": "τελέω",
+                    "future": "τελῶ",
+                    "aorist": "ἐτέλεσα",
+                    "perfect_active": "τετέλεκα",
+                    "perfect_middle": "τετέλεσμαι",
+                    "aorist_passive": "ἐτελέσθην",
+                },
+            },
+            "ἥρως": {
+                "pos": "noun",
+                "gender": "masc",
+                "decl": 3,
+                "senses": ["hero", "warrior", "demigod"],
+                "genitive": "-ωος",
+            },
+            "κύων": {
+                "pos": "noun",
+                "gender": "masc",
+                "decl": 3,
+                "senses": ["dog", "(as insult) shameless person"],
+                "genitive": "κυνός",
+            },
+            "οἰωνός": {
+                "pos": "noun",
+                "gender": "masc",
+                "decl": 2,
+                "senses": ["bird of prey", "omen", "portent"],
+                "genitive": "-οῦ",
+            },
+            "τεύχω": {
+                "pos": "verb",
+                "senses": ["to make", "fashion", "build (esp. armor)"],
+                "principal_parts": {
+                    "present": "τεύχω",
+                    "future": "τεύξω",
+                    "aorist": "ἔτευξα",
+                    "perfect_active": "τέτευχα",
+                    "perfect_middle": "τέτευγμαι",
+                    "aorist_passive": "ἐτεύχθην",
+                },
+            },
+            "ἑλώριον": {
+                "pos": "noun",
+                "gender": "neut",
+                "decl": 2,
+                "senses": ["prey", "spoil", "booty"],
+                "genitive": "-ου",
+            },
         }
 
     # ========================================================================
@@ -386,14 +456,19 @@ class GreekLexicon:
         return entry
 
     def _lookup_basic_vocabulary(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
-        """Look up lemma in basic vocabulary."""
-        # Try exact match
-        vocab_entry = self._basic_vocabulary.get(lemma)
+        """Look up lemma in combined vocabulary (DCC + basic).
+
+        The combined vocabulary includes:
+        - DCC Greek Core Vocabulary (524 words, ~70-80% coverage)
+        - Basic vocabulary with Homeric-specific terms
+        """
+        # Try exact match in combined vocabulary
+        vocab_entry = self._combined_vocabulary.get(lemma)
 
         # Try without accents
         if not vocab_entry:
             normalized = strip_accents_and_breathing(lemma).lower()
-            for vocab_lemma, entry_data in self._basic_vocabulary.items():
+            for vocab_lemma, entry_data in self._combined_vocabulary.items():
                 if strip_accents_and_breathing(vocab_lemma).lower() == normalized:
                     vocab_entry = entry_data
                     lemma = vocab_lemma  # Use the accented form
@@ -404,7 +479,7 @@ class GreekLexicon:
         if not vocab_entry and len(lemma) >= 5:
             normalized = strip_accents_and_breathing(lemma).lower()
             # Try matching stems by comparing prefixes
-            for vocab_lemma, entry_data in self._basic_vocabulary.items():
+            for vocab_lemma, entry_data in self._combined_vocabulary.items():
                 vocab_normalized = strip_accents_and_breathing(vocab_lemma).lower()
                 # Check if they share a significant common prefix (at least 5 chars)
                 # and the vocab entry is a proper noun (capitalized)
@@ -481,12 +556,12 @@ class GreekLexicon:
                     if not morpheus_lemma:
                         continue
 
-                    # Look up definitions using this candidate lemma
-                    vocab_entry = self._basic_vocabulary.get(morpheus_lemma)
+                    # Look up definitions using this candidate lemma in combined vocabulary
+                    vocab_entry = self._combined_vocabulary.get(morpheus_lemma)
                     if not vocab_entry:
                         # Try accent-stripped matching
                         normalized = strip_accents_and_breathing(morpheus_lemma).lower()
-                        for vocab_lemma, entry_data in self._basic_vocabulary.items():
+                        for vocab_lemma, entry_data in self._combined_vocabulary.items():
                             if strip_accents_and_breathing(vocab_lemma).lower() == normalized:
                                 vocab_entry = entry_data
                                 break
