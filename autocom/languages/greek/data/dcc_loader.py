@@ -61,8 +61,8 @@ def load_dcc_vocabulary() -> Dict[str, Dict[str, Any]]:
             if not lemma:
                 continue
 
-            # Normalize POS
-            pos = _normalize_pos(pos_raw)
+            # Normalize POS (pass semantic_group to handle particles correctly)
+            pos = _normalize_pos(pos_raw, semantic_group)
 
             # Parse declension from POS string
             decl = _extract_declension(pos_raw)
@@ -222,18 +222,27 @@ def _extract_principal_parts(parts: List[str]) -> Dict[str, str]:
     return pp if pp else {}
 
 
-def _normalize_pos(pos_raw: str) -> str:
-    """Normalize DCC POS string to simple category."""
+def _normalize_pos(pos_raw: str, semantic_group: str = "") -> str:
+    """Normalize DCC POS string to simple category.
+
+    Note: Order matters - "adverb" contains "verb", so check adverb first!
+    Also handles semantic group override for particles marked as "adverb".
+    """
     pos_lower = pos_raw.lower()
 
+    # Check adverb BEFORE verb since "adverb" contains "verb"
+    if "adverb" in pos_lower:
+        # DCC marks particles as "adverb" with semantic group "Particles"
+        # These should be classified as particles, not adverbs
+        if semantic_group and semantic_group.lower() == "particles":
+            return "part"
+        return "adv"
     if "verb" in pos_lower:
         return "verb"
     if "noun" in pos_lower:
         return "noun"
     if "adjective" in pos_lower or "numeral" in pos_lower:
         return "adj"
-    if "adverb" in pos_lower:
-        return "adv"
     if "pronoun" in pos_lower:
         return "pron"
     if "article" in pos_lower:
