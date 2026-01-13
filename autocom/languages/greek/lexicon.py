@@ -442,6 +442,28 @@ class GreekLexicon:
                 "senses": ["prey", "spoil", "booty"],
                 "genitive": "-ου",
             },
+            "βαίνω": {
+                "pos": "verb",
+                "senses": ["to go", "walk", "step", "come"],
+                "principal_parts": {
+                    "present": "βαίνω",
+                    "future": "βήσομαι",
+                    "aorist": "ἔβην",
+                    "perfect_active": "βέβηκα",
+                },
+            },
+            # Override Middle Liddell's "baa" - βῆ is overwhelmingly the
+            # Homeric aorist indicative of βαίνω "he/she went"
+            "βῆ": {
+                "pos": "verb",
+                "senses": ["(he/she) went", "walked", "stepped"],
+                "principal_parts": {
+                    "present": "βαίνω",
+                    "future": "βήσομαι",
+                    "aorist": "ἔβην",
+                    "perfect_active": "βέβηκα",
+                },
+            },
         }
 
     # ========================================================================
