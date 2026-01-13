@@ -16,7 +16,7 @@ from autocom.processing import ingest as ingest_mod
 from autocom.processing import layout as layout_mod
 from autocom.processing.analyze import get_analyzer_for_language
 from autocom.processing.lexicon import get_lexicon_for_language
-from autocom.rendering.latex import render_latex
+from autocom.rendering.latex import collect_missing_definitions, render_latex
 from autocom.rendering.pdf import render_pdf
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -158,8 +158,23 @@ def render(
     logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "commentary.tex").write_text(latex_src, encoding="utf-8")
+
+    # Collect and write missing definitions for review
+    missing_defs = collect_missing_definitions(doc)
+    if missing_defs:
+        import json
+
+        errors_path = output_dir / "missing_definitions.json"
+        with open(errors_path, "w", encoding="utf-8") as f:
+            json.dump(missing_defs, f, indent=2, ensure_ascii=False)
+        logger.warning(
+            "Found %d words without definitions - see %s for details",
+            len(missing_defs),
+            errors_path,
+        )
+
     if pdf:
-        logger.info("Rendering PDF via pdflatex")
+        logger.info("Rendering PDF via xelatex")
         pdf_path = render_pdf(latex_src, str(output_dir))
         logger.info("PDF generated at %s", pdf_path)
 
@@ -253,8 +268,23 @@ def commentary(
     logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "commentary.tex").write_text(latex_src, encoding="utf-8")
+
+    # Collect and write missing definitions for review
+    missing_defs = collect_missing_definitions(doc)
+    if missing_defs:
+        import json
+
+        errors_path = output_dir / "missing_definitions.json"
+        with open(errors_path, "w", encoding="utf-8") as f:
+            json.dump(missing_defs, f, indent=2, ensure_ascii=False)
+        logger.warning(
+            "Found %d words without definitions - see %s for details",
+            len(missing_defs),
+            errors_path,
+        )
+
     if pdf:
-        logger.info("Rendering PDF via pdflatex")
+        logger.info("Rendering PDF via xelatex")
         pdf_path = render_pdf(latex_src, str(output_dir))
         logger.info("PDF generated at %s", pdf_path)
 

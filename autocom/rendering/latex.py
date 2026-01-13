@@ -21,13 +21,16 @@ def _sorted_glossary_tokens_with_exclusions(
     """
     Extract unique glossary tokens from lines, sorted alphabetically by lemma.
 
+    Only includes tokens that have definitions. Tokens without definitions are
+    filtered out (they can be tracked separately via collect_missing_definitions).
+
     Args:
         lines: Lines containing tokens
         max_entries: Maximum glossary entries per page (default 40 fits ~1/3 page)
         exclude_lemmas: Set of lemma strings (lowercase) to exclude (e.g., core vocabulary)
 
     Returns:
-        List of unique tokens, sorted alphabetically, limited to max_entries
+        List of unique tokens with definitions, sorted alphabetically, limited to max_entries
     """
     exclude_lemmas = exclude_lemmas or set()
     seen_lemmas: Set[str] = set()
@@ -45,6 +48,9 @@ def _sorted_glossary_tokens_with_exclusions(
                 # Skip if in exclusion set (core vocabulary)
                 if lemma_lower in exclude_lemmas:
                     continue
+                # Skip tokens without definitions
+                if not token.gloss.best:
+                    continue
                 if lemma_lower not in seen_lemmas:
                     seen_lemmas.add(lemma_lower)
                     tokens.append(token)
@@ -61,6 +67,67 @@ def _make_sorted_glossary_filter(exclude_lemmas: Optional[Set[str]] = None):
         return _sorted_glossary_tokens_with_exclusions(lines, max_entries, exclude_lemmas)
 
     return filter_fn
+
+
+def collect_missing_definitions(document: Document) -> List[dict]:
+    """
+    Collect all tokens without definitions from a document.
+
+    Returns a list of dicts with word, lemma, and context information
+    for review and debugging.
+
+    Args:
+        document: The document to scan for missing definitions
+
+    Returns:
+        List of dicts with keys: word, lemma, page, line_number
+    """
+    missing = []
+    seen_lemmas: Set[str] = set()
+
+    # Check core vocabulary first
+    if document.core_vocabulary:
+        for token in document.core_vocabulary:
+            if token.gloss and not token.gloss.best:
+                lemma = token.analysis.lemma if token.analysis else token.text
+                lemma_lower = lemma.lower()
+                if lemma_lower not in seen_lemmas:
+                    seen_lemmas.add(lemma_lower)
+                    missing.append({
+                        "word": token.text,
+                        "lemma": lemma,
+                        "page": 0,
+                        "line_number": None,
+                        "context": "core_vocabulary",
+                    })
+
+    # Check each page
+    for page_idx, page in enumerate(document.pages, start=1):
+        for line in page.lines:
+            for token in line.tokens:
+                # Skip punctuation and numbers
+                if token.is_punct or token.text.isdigit():
+                    continue
+                if re.match(r"^[IVXLCDM]+$", token.text, re.IGNORECASE):
+                    continue
+
+                # Check if token has gloss but no definition
+                if token.gloss and not token.gloss.best:
+                    lemma = token.analysis.lemma if token.analysis else token.text
+                    lemma_lower = lemma.lower()
+                    if lemma_lower not in seen_lemmas:
+                        seen_lemmas.add(lemma_lower)
+                        missing.append({
+                            "word": token.text,
+                            "lemma": lemma,
+                            "page": page_idx,
+                            "line_number": line.number,
+                            "context": line.text[:50] + "..." if len(line.text) > 50 else line.text,
+                        })
+
+    # Sort by lemma for easier review
+    missing.sort(key=lambda x: x["lemma"].lower())
+    return missing
 
 
 def _latex_escape(value: str) -> str:

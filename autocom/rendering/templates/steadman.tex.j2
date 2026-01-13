@@ -1,63 +1,12 @@
 \documentclass{article}
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
+\usepackage{fontspec}
 \usepackage{geometry}
 \usepackage{multicol}
 \usepackage{fancyhdr}
 \usepackage{xcolor}
 
-% Greek character handling - basic approach
-\DeclareUnicodeCharacter{03B1}{\ensuremath{\alpha}}
-\DeclareUnicodeCharacter{03B2}{\ensuremath{\beta}}
-\DeclareUnicodeCharacter{03B3}{\ensuremath{\gamma}}
-\DeclareUnicodeCharacter{03B4}{\ensuremath{\delta}}
-\DeclareUnicodeCharacter{03B5}{\ensuremath{\epsilon}}
-\DeclareUnicodeCharacter{03B6}{\ensuremath{\zeta}}
-\DeclareUnicodeCharacter{03B7}{\ensuremath{\eta}}
-\DeclareUnicodeCharacter{03B8}{\ensuremath{\theta}}
-\DeclareUnicodeCharacter{03B9}{\ensuremath{\iota}}
-\DeclareUnicodeCharacter{03BA}{\ensuremath{\kappa}}
-\DeclareUnicodeCharacter{03BB}{\ensuremath{\lambda}}
-\DeclareUnicodeCharacter{03BC}{\ensuremath{\mu}}
-\DeclareUnicodeCharacter{03BD}{\ensuremath{\nu}}
-\DeclareUnicodeCharacter{03BE}{\ensuremath{\xi}}
-\DeclareUnicodeCharacter{03BF}{\ensuremath{o}}
-\DeclareUnicodeCharacter{03C0}{\ensuremath{\pi}}
-\DeclareUnicodeCharacter{03C1}{\ensuremath{\rho}}
-\DeclareUnicodeCharacter{03C2}{\ensuremath{\varsigma}}
-\DeclareUnicodeCharacter{03C3}{\ensuremath{\sigma}}
-\DeclareUnicodeCharacter{03C4}{\ensuremath{\tau}}
-\DeclareUnicodeCharacter{03C5}{\ensuremath{\upsilon}}
-\DeclareUnicodeCharacter{03C6}{\ensuremath{\phi}}
-\DeclareUnicodeCharacter{03C7}{\ensuremath{\chi}}
-\DeclareUnicodeCharacter{03C8}{\ensuremath{\psi}}
-\DeclareUnicodeCharacter{03C9}{\ensuremath{\omega}}
-% Greek vowels with accents (tonos/oxia)
-\DeclareUnicodeCharacter{03AC}{\ensuremath{\alpha}}  % ά - alpha with tonos
-\DeclareUnicodeCharacter{03AD}{\ensuremath{\epsilon}}  % έ - epsilon with tonos
-\DeclareUnicodeCharacter{03AE}{\ensuremath{\eta}}  % ή - eta with tonos
-\DeclareUnicodeCharacter{03AF}{\ensuremath{\iota}}  % ί - iota with tonos
-\DeclareUnicodeCharacter{03CC}{\ensuremath{o}}  % ό - omicron with tonos
-\DeclareUnicodeCharacter{03CD}{\ensuremath{\upsilon}}  % ύ - upsilon with tonos
-\DeclareUnicodeCharacter{03CE}{\ensuremath{\omega}}  % ώ - omega with tonos
-% Greek vowels with diaeresis
-\DeclareUnicodeCharacter{03CA}{\ensuremath{\iota}}  % ϊ - iota with dialytika
-\DeclareUnicodeCharacter{03CB}{\ensuremath{\upsilon}}  % ϋ - upsilon with dialytika
-% Greek vowels with diaeresis and tonos
-\DeclareUnicodeCharacter{0390}{\ensuremath{\iota}}  % ΐ - iota with dialytika and tonos
-\DeclareUnicodeCharacter{03B0}{\ensuremath{\upsilon}}  % ΰ - upsilon with dialytika and tonos
-% Handle common combining diacritics by ignoring them (basic fallback)
-\DeclareUnicodeCharacter{0313}{}
-\DeclareUnicodeCharacter{0314}{}
-\DeclareUnicodeCharacter{0341}{}
-\DeclareUnicodeCharacter{0342}{}
-\DeclareUnicodeCharacter{0300}{}
-\DeclareUnicodeCharacter{0301}{}
-\DeclareUnicodeCharacter{0302}{}
-\DeclareUnicodeCharacter{0303}{}
-\DeclareUnicodeCharacter{0304}{}
-\DeclareUnicodeCharacter{0306}{}
-\DeclareUnicodeCharacter{0308}{}
+% Use system fonts with full Unicode support (XeLaTeX)
+\setmainfont{Times New Roman}[Ligatures=TeX]
 
 % Page setup
 {% if doc.metadata.paper_size == "a4" %}
@@ -88,12 +37,8 @@
 \begin{multicols}{2}
 {% for token in doc.core_vocabulary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
-{% set has_definition = token.gloss.best %}
-{% if has_definition %}
-\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency %}, {{ token.gloss.frequency }}{% endif %}
-
-{% else %}
-\textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
+{% if token.gloss.best %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.article %}, {{ token.gloss.article }}{% endif %}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency %}, {{ token.gloss.frequency }}{% endif %}
 
 {% endif %}
 {% endfor %}
@@ -128,14 +73,8 @@
 \begin{multicols}{2}
 {% for token in page.lines | sorted_glossary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
-{% set has_definition = token.gloss.best %}
-{% if has_definition %}
-\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency and token.gloss.frequency > 1 %}, {{ token.gloss.frequency }}{% endif %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.article %}, {{ token.gloss.article }}{% endif %}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency and token.gloss.frequency > 1 %}, {{ token.gloss.frequency }}{% endif %}
 
-{% else %}
-\textbf{{ "{" }}{{ hw | latex_escape }}{{ "}" }}: definition not found
-
-{% endif %}
 {% endfor %}
 \end{multicols}
 

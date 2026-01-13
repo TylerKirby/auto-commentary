@@ -14,7 +14,10 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 
+from autocom.core.lexical import NormalizedLexicalEntry
 from autocom.core.models import Gloss, Line, Token
+from autocom.core.normalizers import LewisShortNormalizer, WhitakersNormalizer
+from autocom.languages.latin.cache import DictionaryCache, get_dictionary_cache
 
 
 class LatinLexicon:
@@ -41,12 +44,18 @@ class LatinLexicon:
         api_timeout: float = 3.0,
         generate_baseline: bool = False,
         primary_source: str = "whitakers",
+        enable_cache: bool = True,
+        cache: Optional[DictionaryCache] = None,
     ) -> None:
         self.max_senses = max_senses
         self.enable_api_fallbacks = enable_api_fallbacks
         self.api_timeout = api_timeout
         self._generate_baseline = generate_baseline
         self._primary_source = primary_source
+
+        # Persistent dictionary cache
+        self._enable_cache = enable_cache
+        self._cache = cache if cache is not None else (get_dictionary_cache() if enable_cache else None)
 
         # Lewis & Short setup
         self._lewis_short_dir = data_dir or self._default_lewis_short_dir()
@@ -56,7 +65,7 @@ class LatinLexicon:
         self._latin_wordnet_base = "https://latinwordnet.exeter.ac.uk/api"
         self._latin_simple_base = "https://www.latin-is-simple.com/api"
 
-        # Caches for API responses
+        # In-memory caches (kept for backward compatibility, but persistent cache preferred)
         self._api_cache: Dict[str, List[str]] = {}
 
         # Whitaker's Words setup
@@ -66,6 +75,10 @@ class LatinLexicon:
             self._whitaker: Optional[Any] = WhitakerParser()
         except Exception:  # pragma: no cover - env dependent
             self._whitaker = None
+
+        # Normalizers for converting raw dictionary data to NormalizedLexicalEntry
+        self._whitakers_normalizer = WhitakersNormalizer()
+        self._lewis_short_normalizer = LewisShortNormalizer(max_senses=max_senses)
 
     @staticmethod
     def _default_lewis_short_dir() -> str:
@@ -128,6 +141,18 @@ class LatinLexicon:
         3: "-is",
         4: "-ūs",
         5: "-ēī",
+    }
+
+    # Conjugation to 1st person singular ending mapping (for verb headwords)
+    CONJUGATION_ENDING_MAP = {
+        1: "o",      # amo
+        2: "eo",     # moneo
+        3: "o",      # ago, duco
+        4: "io",     # audio
+        5: "io",     # capio (3rd -io verbs sometimes coded as 5)
+        6: "o",      # irregular but usually -o
+        7: "o",      # irregular
+        8: "o",      # irregular (sum -> but handled specially)
     }
 
     @staticmethod
@@ -705,11 +730,106 @@ class LatinLexicon:
 
         return result
 
+    def _lookup_whitaker_normalized(self, word: str) -> Optional[NormalizedLexicalEntry]:
+        """Look up word in Whitaker's and return a properly normalized entry.
+
+        This method calls normalize_lexeme directly on raw Whitaker's output,
+        which performs full headword reconstruction from stems.
+
+        Args:
+            word: The word to look up
+
+        Returns:
+            NormalizedLexicalEntry with reconstructed headword, or None
+        """
+        if self._whitaker is None:
+            return None
+
+        query_variants = self._get_query_variants(word)
+
+        for q in query_variants:
+            try:
+                parsed = self._whitaker.parse(q)
+            except Exception:
+                continue
+
+            for form in getattr(parsed, "forms", []) or []:
+                form_analyses = getattr(form, "analyses", [])
+                analyses = list(form_analyses.values()) if isinstance(form_analyses, dict) else form_analyses or []
+
+                for analysis in analyses:
+                    lexeme = getattr(analysis, "lexeme", None)
+                    if lexeme is None:
+                        continue
+
+                    # Check if lexeme has senses
+                    raw_senses = getattr(lexeme, "senses", [])
+                    if isinstance(raw_senses, str):
+                        raw_senses = [raw_senses]
+                    if not raw_senses:
+                        continue
+
+                    # Use normalize_lexeme for full headword reconstruction
+                    entry = self._whitakers_normalizer.normalize_lexeme(
+                        lexeme, original_word=word
+                    )
+                    if entry and entry.senses:
+                        return entry
+
+        return None
+
+    def lookup_normalized(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
+        """Look up a lemma and return a NormalizedLexicalEntry.
+
+        Uses the normalization layer to produce canonical lexical entries.
+        The lookup order depends on self._primary_source.
+
+        Args:
+            lemma: The lemma to look up
+
+        Returns:
+            NormalizedLexicalEntry if found, None otherwise
+        """
+        if not lemma or len(lemma) < 2:
+            return None
+
+        if self._primary_source == "whitakers":
+            # Try Whitaker's first (with full headword reconstruction)
+            if self._whitaker:
+                entry = self._lookup_whitaker_normalized(lemma)
+                if entry:
+                    return entry
+
+            # Fall back to Lewis & Short
+            entry = self._get_lewis_short_entry(lemma)
+            if entry:
+                return self._lewis_short_normalizer.normalize(entry, lemma)
+        else:
+            # Lewis & Short primary
+            entry = self._get_lewis_short_entry(lemma)
+            if entry:
+                return self._lewis_short_normalizer.normalize(entry, lemma)
+
+            # Fall back to Whitaker's (with full headword reconstruction)
+            if self._whitaker:
+                entry = self._lookup_whitaker_normalized(lemma)
+                if entry:
+                    return entry
+
+        return None
+
     def _try_latin_wordnet_api(self, lemma: str) -> List[str]:
         """Query Latin WordNet API for definitions."""
         if not self.enable_api_fallbacks:
             return []
 
+        # Check persistent cache first
+        if self._cache:
+            cached = self._cache.get(lemma, "wordnet_api")
+            if cached is not None:
+                return cached.get("senses", [])
+
+        # Fallback to in-memory cache
         cache_key = f"wordnet:{lemma}"
         if cache_key in self._api_cache:
             return self._api_cache[cache_key]
@@ -731,12 +851,18 @@ class LatinLexicon:
                             if defn and defn not in definitions:
                                 definitions.append(defn)
 
+                # Save to persistent cache with TTL
+                if self._cache:
+                    self._cache.set(lemma, "wordnet_api", {"senses": definitions}, use_ttl=True)
                 self._api_cache[cache_key] = definitions
                 return definitions
 
         except Exception:
             pass
 
+        # Cache empty result
+        if self._cache:
+            self._cache.set(lemma, "wordnet_api", {"senses": []}, use_ttl=True)
         self._api_cache[cache_key] = []
         return []
 
@@ -745,6 +871,13 @@ class LatinLexicon:
         if not self.enable_api_fallbacks:
             return []
 
+        # Check persistent cache first
+        if self._cache:
+            cached = self._cache.get(lemma, "simple_api")
+            if cached is not None:
+                return cached.get("senses", [])
+
+        # Fallback to in-memory cache
         cache_key = f"simple:{lemma}"
         if cache_key in self._api_cache:
             return self._api_cache[cache_key]
@@ -771,12 +904,18 @@ class LatinLexicon:
                         if meaning:
                             definitions.append(meaning)
 
+                # Save to persistent cache with TTL
+                if self._cache:
+                    self._cache.set(lemma, "simple_api", {"senses": definitions}, use_ttl=True)
                 self._api_cache[cache_key] = definitions
                 return definitions
 
         except Exception:
             pass
 
+        # Cache empty result
+        if self._cache:
+            self._cache.set(lemma, "simple_api", {"senses": []}, use_ttl=True)
         self._api_cache[cache_key] = []
         return []
 
@@ -883,6 +1022,12 @@ class LatinLexicon:
         if self._whitaker is None:
             return result
 
+        # Check persistent cache first
+        if self._cache:
+            cached = self._cache.get(word, "whitakers")
+            if cached is not None:
+                return cached
+
         query_variants = self._get_query_variants(word)
 
         for q in query_variants:
@@ -930,20 +1075,26 @@ class LatinLexicon:
                     # Extract roots for headword and principal parts
                     roots = getattr(lexeme, "roots", [])
                     category = getattr(lexeme, "category", [])
+                    conj = category[0] if category else None
 
                     # Build headword from first root
                     if roots and len(roots) > 0:
-                        result["headword"] = roots[0]
+                        stem = roots[0]
+                        # For verbs, construct 1st person singular (dictionary form)
+                        if wt_name == "V" and conj is not None:
+                            ending = self.CONJUGATION_ENDING_MAP.get(conj, "o")
+                            result["headword"] = f"{stem}{ending}"
+                        else:
+                            result["headword"] = stem
 
                     # Build genitive for nouns based on declension
-                    if wt_name == "N" and category and len(category) > 0:
-                        decl = category[0]
+                    if wt_name == "N" and conj is not None:
+                        decl = conj  # For nouns, category[0] is declension
                         if decl in self.DECLENSION_GENITIVE_MAP:
                             result["genitive"] = self.DECLENSION_GENITIVE_MAP[decl]
 
                     # Build principal parts for verbs
                     if wt_name == "V" and roots and len(roots) >= 4:
-                        conj = category[0] if category else ""
                         # Format: perfectum stem + ī, supine stem + um (conjugation)
                         perf_stem = roots[2] if len(roots) > 2 else ""
                         sup_stem = roots[3] if len(roots) > 3 else ""
@@ -956,112 +1107,63 @@ class LatinLexicon:
 
                     # Return as soon as we have senses
                     if result["senses"]:
+                        # Save to persistent cache (no TTL for offline dictionaries)
+                        if self._cache:
+                            self._cache.set(word, "whitakers", result, use_ttl=False)
                         return result
 
+        # Cache empty result to avoid repeated failed lookups
+        if self._cache:
+            self._cache.set(word, "whitakers", result, use_ttl=False)
         return result
 
     def enrich_token(self, token: Token, frequency: Optional[int] = None) -> Token:
-        """Enrich a token with dictionary information.
+        """Enrich a token with dictionary information using the normalization layer.
 
         Args:
             token: The token to enrich
             frequency: Optional occurrence count for this lemma in the text
 
-        The fallback order depends on self._primary_source:
-        - "whitakers": Whitaker's -> Lewis & Short -> APIs
-        - "lewis_short": Lewis & Short -> APIs -> Whitaker's
+        Uses lookup_normalized() for primary lookups, falling back to API
+        lookups when offline dictionaries don't have the entry.
         """
         if token.is_punct:
             return token
+
         lemma = token.analysis.lemma if token.analysis else token.text
 
-        result: Dict[str, Any] = {"senses": []}
+        # Layer 1: Try normalized lookup (Whitaker's or L&S based on primary_source)
+        entry = self.lookup_normalized(lemma)
 
-        if self._primary_source == "whitakers":
-            # Whitaker's Words primary flow
-            # Layer 1: Whitaker's Words (primary - offline, pedagogical)
-            result = self._lookup_whitaker_with_metadata(lemma)
+        # Layer 2: API fallbacks (return senses only, no full normalization)
+        api_senses: List[str] = []
+        if not entry and self.enable_api_fallbacks:
+            api_senses = self._try_latin_wordnet_api(lemma)
+            if not api_senses:
+                api_senses = self._try_latin_simple_api(lemma)
 
-            # Layer 2: Lewis & Short (fallback for missing entries)
-            if not result.get("senses"):
-                ls_result = self.lookup_with_metadata(lemma)
-                result["senses"] = ls_result.get("senses", [])
-                # Merge any available Lewis & Short metadata if not already set
-                for key in ["headword", "genitive", "gender", "pos_abbrev", "principal_parts"]:
-                    if ls_result.get(key) and not result.get(key):
-                        result[key] = ls_result[key]
+        # Layer 3: Try alternative lemmas (morphological guesses)
+        if not entry and not api_senses:
+            alternatives = self._get_alternative_lemmas(token.text, lemma)
+            for alt_lemma in alternatives:
+                entry = self.lookup_normalized(alt_lemma)
+                if entry:
+                    # Update the lemma in analysis to the working one
+                    if token.analysis:
+                        token.analysis.lemma = alt_lemma
+                    lemma = alt_lemma
+                    break
 
-            # Layer 3: Latin WordNet API (optional fallback)
-            if not result.get("senses") and self.enable_api_fallbacks:
-                result["senses"] = self._try_latin_wordnet_api(lemma)
-
-            # Layer 4: Latin is Simple API (optional fallback)
-            if not result.get("senses") and self.enable_api_fallbacks:
-                result["senses"] = self._try_latin_simple_api(lemma)
-
-            # Layer 5: Try alternative lemmas (morphological guesses)
-            if not result.get("senses"):
-                alternatives = self._get_alternative_lemmas(token.text, lemma)
-                for alt_lemma in alternatives:
-                    alt_result = self._lookup_whitaker_with_metadata(alt_lemma)
-                    if not alt_result.get("senses"):
-                        alt_result = self.lookup_with_metadata(alt_lemma)
-                    if alt_result.get("senses"):
-                        result = alt_result
-                        # Update the lemma in analysis to the working one
-                        if token.analysis:
-                            token.analysis.lemma = alt_lemma
-                        lemma = alt_lemma
-                        break
-
+        # Build Gloss from normalized entry or fallback
+        if entry:
+            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
+        elif api_senses:
+            # API results don't have full metadata, create minimal Gloss
+            token.gloss = Gloss(lemma=lemma, senses=api_senses, frequency=frequency)
         else:
-            # Lewis & Short primary flow (original behavior)
-            # Layer 1: Lewis & Short (primary)
-            result = self.lookup_with_metadata(lemma)
+            # No definition found
+            token.gloss = Gloss(lemma=lemma, senses=[], frequency=frequency)
 
-            # Layer 2: Latin WordNet API (modern fallback)
-            if not result.get("senses"):
-                result["senses"] = self._try_latin_wordnet_api(lemma)
-
-            # Layer 3: Latin is Simple API (fast fallback)
-            if not result.get("senses"):
-                result["senses"] = self._try_latin_simple_api(lemma)
-
-            # Layer 4: Whitaker's Words (offline fallback)
-            if not result.get("senses"):
-                whitaker_result = self._lookup_whitaker_with_metadata(lemma)
-                result["senses"] = whitaker_result.get("senses", [])
-                # Merge Whitaker metadata if not already set
-                for key in ["headword", "genitive", "gender", "pos_abbrev", "principal_parts"]:
-                    if whitaker_result.get(key) and not result.get(key):
-                        result[key] = whitaker_result[key]
-
-            # Layer 5: Try alternative lemmas (morphological guesses)
-            if not result.get("senses"):
-                alternatives = self._get_alternative_lemmas(token.text, lemma)
-                for alt_lemma in alternatives:
-                    alt_result = self.lookup_with_metadata(alt_lemma)
-                    if not alt_result.get("senses"):
-                        alt_result = self._lookup_whitaker_with_metadata(alt_lemma)
-                    if alt_result.get("senses"):
-                        result = alt_result
-                        # Update the lemma in analysis to the working one
-                        if token.analysis:
-                            token.analysis.lemma = alt_lemma
-                        lemma = alt_lemma
-                        break
-
-        # Build Gloss with Steadman-style metadata
-        token.gloss = Gloss(
-            lemma=lemma,
-            senses=result.get("senses", []),
-            headword=result.get("headword"),
-            genitive=result.get("genitive"),
-            gender=result.get("gender"),
-            pos_abbrev=result.get("pos_abbrev"),
-            principal_parts=result.get("principal_parts"),
-            frequency=frequency,
-        )
         return token
 
     def enrich_line(self, line: Line, frequency_map: Optional[Dict[str, int]] = None) -> Line:
@@ -1087,6 +1189,31 @@ class LatinLexicon:
             frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
         """
         return [self.enrich_line(line, frequency_map) for line in lines]
+
+    def get_cache_stats(self) -> Optional[Dict[str, Any]]:
+        """Get dictionary cache statistics.
+
+        Returns:
+            Cache stats dict or None if caching is disabled
+        """
+        if self._cache:
+            return self._cache.get_stats()
+        return None
+
+    def clear_cache(self, source: Optional[str] = None) -> int:
+        """Clear dictionary cache entries.
+
+        Args:
+            source: If provided, only clear entries from this source
+                    (whitakers, wordnet_api, simple_api).
+                    If None, clear all entries.
+
+        Returns:
+            Number of entries removed, or 0 if caching is disabled
+        """
+        if self._cache:
+            return self._cache.clear(source)
+        return 0
 
 
 class LatinLexiconService:
