@@ -102,6 +102,77 @@ def _extract_genitive(note_text: str, headword: str) -> Optional[str]:
     return None
 
 
+def _extract_adjective_paradigm(note_text: str) -> Optional[str]:
+    """Extract adjective paradigm (fem/neut endings) from note text.
+
+    Middle Liddell uses patterns like:
+    - 3-termination: "kalo/s, h/, o/n" -> "-ή, -όν"
+    - 3-termination: "i)/fqimos, h, on" -> "-η, -ον"
+    - 2-termination: "a)/peiros, on" -> "-ον"
+
+    Returns:
+        Paradigm string like "-η, -ον" or "-ον", or None if not an adjective pattern.
+    """
+    if not note_text:
+        return None
+
+    parts = [p.strip() for p in note_text.split(",")]
+
+    # 3-termination pattern: "lemma, fem, neut" (e.g., "kalo/s, h/, o/n")
+    if len(parts) == 3:
+        fem_part = parts[1].strip()
+        neut_part = parts[2].strip()
+
+        # Check if this looks like adjective endings (short forms like h, on or h/, o/n)
+        # Exclude article patterns (o(, h(, to/)
+        if fem_part and neut_part and not any(p.endswith("(") for p in [fem_part, neut_part]):
+            # Check for typical adjective ending patterns
+            if re.match(r"^[hao]+[/=]?$", fem_part) and re.match(r"^[aoe]+[/n=]+$", neut_part):
+                fem_unicode = _beta_to_unicode(fem_part)
+                neut_unicode = _beta_to_unicode(neut_part)
+                return f"-{fem_unicode}, -{neut_unicode}"
+
+    # 2-termination pattern: "lemma, neut" (e.g., "a)/peiros, on")
+    if len(parts) == 2:
+        neut_part = parts[1].strip()
+        # Check if it looks like a neuter ending (on, o/n)
+        if neut_part and re.match(r"^[oe]+[/n]+$", neut_part):
+            neut_unicode = _beta_to_unicode(neut_part)
+            return f"-{neut_unicode}"
+
+    return None
+
+
+def _is_adjective_note(note_text: str) -> bool:
+    """Check if note text indicates an adjective pattern.
+
+    Returns True if the note shows adjective paradigm forms.
+    """
+    if not note_text:
+        return False
+
+    parts = [p.strip() for p in note_text.split(",")]
+
+    # 3-termination: "lemma, fem, neut"
+    if len(parts) == 3:
+        fem_part = parts[1].strip()
+        neut_part = parts[2].strip()
+        # Adjective pattern: short endings like "h, on" or "h/, o/n"
+        # Exclude noun patterns with article: "o(", "h(", "to/"
+        if fem_part and neut_part:
+            if not any(p.endswith("(") for p in [fem_part, neut_part]):
+                if re.match(r"^[hao]+[/=]?$", fem_part) and re.match(r"^[aoe]+[/n=]+$", neut_part):
+                    return True
+
+    # 2-termination: "lemma, on"
+    if len(parts) == 2:
+        neut_part = parts[1].strip()
+        if neut_part and re.match(r"^[oe]+[/n]+$", neut_part):
+            return True
+
+    return False
+
+
 def _extract_pos_from_entry(entry_elem: ET.Element) -> str:
     """Infer part of speech from entry structure and content.
 
@@ -284,16 +355,28 @@ def load_middle_liddell_vocabulary() -> Dict[str, Dict[str, Any]]:
             if canonical:
                 lemma = canonical
 
-        # Extract gender from note element
+        # Extract morphological info from note element
         gender = None
         genitive = None
+        adjective_paradigm = None
         note_elem = entry.find(".//note[@type='alt']")
         if note_elem is not None and note_elem.text:
-            gender = _extract_article_gender(note_elem.text)
-            genitive = _extract_genitive(note_elem.text, entry_key)
+            note_text = note_elem.text
+
+            # Check for adjective paradigm first
+            if _is_adjective_note(note_text):
+                adjective_paradigm = _extract_adjective_paradigm(note_text)
+            else:
+                # Not an adjective - extract noun gender and genitive
+                gender = _extract_article_gender(note_text)
+                genitive = _extract_genitive(note_text, entry_key)
 
         # Extract part of speech
         pos = _extract_pos_from_entry(entry)
+
+        # Override POS for adjectives detected by note pattern
+        if adjective_paradigm:
+            pos = "adj"
 
         # Extract senses
         senses = _extract_senses(entry)
@@ -306,10 +389,15 @@ def load_middle_liddell_vocabulary() -> Dict[str, Dict[str, Any]]:
             "senses": senses,
         }
 
-        if gender:
-            entry_dict["gender"] = gender
-        if genitive:
-            entry_dict["genitive"] = genitive
+        # For adjectives, use paradigm in genitive field and don't set gender
+        if adjective_paradigm:
+            entry_dict["genitive"] = adjective_paradigm
+        else:
+            # For nouns, use gender and genitive
+            if gender:
+                entry_dict["gender"] = gender
+            if genitive:
+                entry_dict["genitive"] = genitive
 
         vocabulary[lemma] = entry_dict
 
