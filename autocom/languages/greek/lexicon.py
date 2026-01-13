@@ -26,6 +26,7 @@ from autocom.core.normalizers.morpheus import MorpheusNormalizer
 from autocom.languages.latin.cache import DictionaryCache, get_dictionary_cache
 
 from .data.dcc_loader import load_dcc_vocabulary
+from .data.middle_liddell_loader import load_middle_liddell_vocabulary
 from .text_processing import greek_to_ascii, strip_accents_and_breathing
 
 
@@ -64,15 +65,29 @@ class GreekLexicon:
         # Normalizer for converting API responses to NormalizedLexicalEntry
         self._normalizer = MorpheusNormalizer()
 
-        # Load DCC Greek Core Vocabulary (524 most common words)
-        # This provides ~70-80% coverage of typical Greek texts
-        self._dcc_vocabulary = load_dcc_vocabulary()
+        # Load vocabulary sources (in order of priority for overrides):
+        # 1. Middle Liddell (~34K entries) - comprehensive intermediate lexicon
+        # 2. DCC Greek Core (524 entries) - frequency data for common words
+        # 3. Basic vocabulary - curated entries with principal parts and Homeric terms
 
         # Basic Greek vocabulary for additional entries and Homeric terms
         self._basic_vocabulary = self._load_basic_vocabulary()
 
-        # Combined vocabulary: DCC takes precedence, then basic vocab
-        self._combined_vocabulary = {**self._basic_vocabulary, **self._dcc_vocabulary}
+        # Load DCC Greek Core Vocabulary (524 most common words)
+        # This provides ~70-80% coverage of typical Greek texts
+        self._dcc_vocabulary = load_dcc_vocabulary()
+
+        # Load Middle Liddell (PRIMARY source - ~34K entries)
+        # This provides comprehensive coverage across all genres
+        self._middle_liddell_vocabulary = load_middle_liddell_vocabulary()
+
+        # Combined vocabulary: later sources override earlier ones
+        # Order: Middle Liddell -> DCC -> Basic (basic overrides all)
+        self._combined_vocabulary = {
+            **self._middle_liddell_vocabulary,  # Base: comprehensive coverage
+            **self._dcc_vocabulary,  # Override: better frequency data
+            **self._basic_vocabulary,  # Override: curated entries with principal parts
+        }
 
     def _normalize_cache_key(self, word: str) -> str:
         """Normalize a Greek word for cache key generation.
@@ -177,13 +192,43 @@ class GreekLexicon:
             "ἐγώ": {"pos": "pron", "senses": ["I"]},
             "σύ": {"pos": "pron", "senses": ["you"]},
             "ὅς": {"pos": "pron", "gender": "masc", "senses": ["who", "which", "that"]},
-            # Common adjectives
-            "πᾶς": {"pos": "adj", "gender": "masc", "decl": 3, "senses": ["all", "every", "whole"]},
-            "μέγας": {"pos": "adj", "gender": "masc", "decl": 3, "senses": ["great", "large", "big"]},
-            "καλός": {"pos": "adj", "gender": "masc", "decl": 1, "senses": ["beautiful", "good", "noble"]},
-            "κακός": {"pos": "adj", "gender": "masc", "decl": 1, "senses": ["bad", "evil", "cowardly"]},
-            "ἀγαθός": {"pos": "adj", "gender": "masc", "decl": 1, "senses": ["good", "brave", "noble"]},
-            "πολύς": {"pos": "adj", "gender": "masc", "decl": 3, "senses": ["much", "many"]},
+            # Common adjectives (use genitive field for paradigm endings)
+            "πᾶς": {
+                "pos": "adj",
+                "decl": 3,
+                "senses": ["all", "every", "whole"],
+                "genitive": "πᾶσα, πᾶν",  # Irregular 3-termination
+            },
+            "μέγας": {
+                "pos": "adj",
+                "decl": 3,
+                "senses": ["great", "large", "big"],
+                "genitive": "μεγάλη, μέγα",  # Irregular 3-termination
+            },
+            "καλός": {
+                "pos": "adj",
+                "decl": 1,
+                "senses": ["beautiful", "good", "noble"],
+                "genitive": "-ή, -όν",  # Regular 3-termination
+            },
+            "κακός": {
+                "pos": "adj",
+                "decl": 1,
+                "senses": ["bad", "evil", "cowardly"],
+                "genitive": "-ή, -όν",  # Regular 3-termination
+            },
+            "ἀγαθός": {
+                "pos": "adj",
+                "decl": 1,
+                "senses": ["good", "brave", "noble"],
+                "genitive": "-ή, -όν",  # Regular 3-termination
+            },
+            "πολύς": {
+                "pos": "adj",
+                "decl": 3,
+                "senses": ["much", "many"],
+                "genitive": "πολλή, πολύ",  # Irregular 3-termination
+            },
             # Common nouns
             "ἄνθρωπος": {
                 "pos": "noun",
@@ -271,15 +316,15 @@ class GreekLexicon:
             },
             "οὐλόμενος": {
                 "pos": "adj",
-                "gender": "masc",
                 "decl": 1,
                 "senses": ["baneful", "accursed", "destructive"],
+                "genitive": "-η, -ον",  # Participial adjective (3-termination)
             },
             "μυρίος": {
                 "pos": "adj",
-                "gender": "masc",
                 "decl": 1,
                 "senses": ["countless", "numberless", "ten thousand"],
+                "genitive": "-α, -ον",  # 3-termination (fem in -α)
             },
             "Ἀχαιός": {
                 "pos": "noun",
@@ -331,9 +376,9 @@ class GreekLexicon:
             },
             "ἴφθιμος": {
                 "pos": "adj",
-                "gender": "masc",
                 "decl": 1,
                 "senses": ["mighty", "stout", "valiant"],
+                "genitive": "-η, -ον",  # 3-termination participle-type adjective
             },
             # ========================================================================
             # Core vocabulary missing from DCC (identified by language expert)
@@ -422,22 +467,22 @@ class GreekLexicon:
         if cache_key in self._normalized_cache:
             return self._normalized_cache[cache_key]
 
-        # Check persistent cache
-        if self._cache:
+        # Try basic vocabulary FIRST (faster, no network, always up-to-date)
+        # This takes precedence over persistent cache to ensure vocabulary
+        # updates are reflected immediately without cache invalidation
+        entry = self._lookup_basic_vocabulary(lemma)
+
+        # Fall back to persistent cache if not in basic vocabulary
+        if not entry and self._cache:
             cached = self._cache.get(cache_key, "greek_morpheus")
             if cached is not None:
                 # Reconstruct NormalizedLexicalEntry from cached data
                 try:
                     entry = NormalizedLexicalEntry(**cached)
-                    self._normalized_cache[cache_key] = entry
-                    return entry
                 except Exception:
                     pass  # Invalid cached data, proceed with fresh lookup
 
-        # Try basic vocabulary first (faster, no network)
-        entry = self._lookup_basic_vocabulary(lemma)
-
-        # Try Perseus Morpheus API
+        # Try Perseus Morpheus API as last resort
         if not entry:
             entry = self._lookup_perseus_morpheus(lemma)
 
@@ -456,11 +501,12 @@ class GreekLexicon:
         return entry
 
     def _lookup_basic_vocabulary(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
-        """Look up lemma in combined vocabulary (DCC + basic).
+        """Look up lemma in combined vocabulary.
 
-        The combined vocabulary includes:
-        - DCC Greek Core Vocabulary (524 words, ~70-80% coverage)
-        - Basic vocabulary with Homeric-specific terms
+        The combined vocabulary includes (in priority order):
+        - Middle Liddell (~34K entries) - comprehensive intermediate lexicon
+        - DCC Greek Core Vocabulary (524 words) - frequency data for common words
+        - Basic vocabulary - curated entries with principal parts and Homeric terms
         """
         # Try exact match in combined vocabulary
         vocab_entry = self._combined_vocabulary.get(lemma)
