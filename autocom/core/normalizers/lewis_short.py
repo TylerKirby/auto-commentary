@@ -217,7 +217,7 @@ class LewisShortNormalizer:
 
     def _extract_pos(self, entry: Dict[str, Any]) -> PartOfSpeech:
         """Extract and map part of speech from entry."""
-        pos_raw = entry.get("part_of_speech", "").lower().strip()
+        pos_raw = (entry.get("part_of_speech") or "").lower().strip()
 
         # Try direct mapping first
         if pos_raw in LS_POS_MAP:

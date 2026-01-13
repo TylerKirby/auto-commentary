@@ -403,7 +403,8 @@ class WhitakersNormalizer:
         # Add nominal fields
         if wt_name == "N":
             entry_kwargs["gender"] = gender
-            entry_kwargs["declension"] = decl_or_conj
+            # Only standard declensions 1-5 are valid; 9 = indeclinable
+            entry_kwargs["declension"] = decl_or_conj if decl_or_conj and 1 <= decl_or_conj <= 5 else None
             if decl_or_conj:
                 entry_kwargs["genitive"] = self.GENITIVE_MAP.get(decl_or_conj)
             # Add stem type if we can determine it
@@ -418,7 +419,8 @@ class WhitakersNormalizer:
         # Add adjective fields
         elif wt_name == "ADJ":
             entry_kwargs["gender"] = gender
-            entry_kwargs["declension"] = decl_or_conj
+            # Only standard declensions 1-5 are valid; 9 = indeclinable
+            entry_kwargs["declension"] = decl_or_conj if decl_or_conj and 1 <= decl_or_conj <= 5 else None
 
         # Add pronoun fields
         elif wt_name == "PRON":
