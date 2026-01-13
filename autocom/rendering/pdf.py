@@ -21,7 +21,7 @@ def render_pdf(
     try:
         subprocess.run(
             [
-                "xelatex",
+                "pdflatex",
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 tex_path.name,
@@ -32,7 +32,7 @@ def render_pdf(
             stderr=subprocess.PIPE,
         )
     except Exception as exc:  # pragma: no cover - depends on environment
-        raise RuntimeError(f"xelatex failed: {exc}")
+        raise RuntimeError(f"pdflatex failed: {exc}")
     if not pdf_path.exists():
         raise RuntimeError("pdflatex reported success but no PDF was produced")
     return pdf_path

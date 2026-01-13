@@ -176,62 +176,6 @@ def split_enclitic(word: str) -> Tuple[str, Optional[str]]:
     return word, None
 
 
-def greek_to_ascii(text: str) -> str:
-    """
-    Convert Greek Unicode to ASCII transliteration for Morpheus API queries.
-
-    The Perseus Morpheus API accepts simple ASCII transliteration without
-    diacritics. This function converts Greek Unicode to a form the API accepts.
-
-    :param text: Greek text (may include accents/breathing)
-    :return: ASCII transliteration suitable for Morpheus API
-    """
-    if not text:
-        return ""
-
-    # First strip accents and breathing marks
-    stripped = strip_accents_and_breathing(text)
-
-    # Greek to ASCII mapping (lowercase)
-    greek_to_latin = {
-        "α": "a",
-        "β": "b",
-        "γ": "g",
-        "δ": "d",
-        "ε": "e",
-        "ζ": "z",
-        "η": "h",
-        "θ": "q",
-        "ι": "i",
-        "κ": "k",
-        "λ": "l",
-        "μ": "m",
-        "ν": "n",
-        "ξ": "c",
-        "ο": "o",
-        "π": "p",
-        "ρ": "r",
-        "σ": "s",
-        "ς": "s",  # Final sigma
-        "τ": "t",
-        "υ": "u",
-        "φ": "f",
-        "χ": "x",
-        "ψ": "y",
-        "ω": "w",
-    }
-
-    result = []
-    for char in stripped.lower():
-        if char in greek_to_latin:
-            result.append(greek_to_latin[char])
-        elif char.isascii():
-            result.append(char)
-        # Skip non-ASCII non-Greek characters
-
-    return "".join(result)
-
-
 def is_greek_text(text: str) -> bool:
     """
     Determine if text contains substantial Greek content.
