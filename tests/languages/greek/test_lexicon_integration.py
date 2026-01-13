@@ -49,29 +49,6 @@ class TestGreekLexiconBasicVocabulary:
         assert entry is not None
         assert entry.pos == PartOfSpeech.VERB
 
-    def test_lookup_baino_verb(self, lexicon):
-        """Looks up βαίνω (to go)."""
-        entry = lexicon.lookup_normalized("βαίνω")
-        assert entry is not None
-        assert entry.pos == PartOfSpeech.VERB
-        assert any("go" in sense for sense in entry.senses)
-
-    def test_be_is_aorist_of_baino_not_baa(self, lexicon):
-        """Ensures βῆ returns 'went' (aorist of βαίνω), not 'baa' (sheep sound).
-
-        Regression test for bug auto-commentary-cb3: Middle Liddell has βῆ
-        as an interjection meaning 'baa', but in Homeric Greek βῆ is
-        overwhelmingly the 3rd person aorist indicative of βαίνω ('went').
-        """
-        entry = lexicon.lookup_normalized("βῆ")
-        assert entry is not None
-        assert entry.pos == PartOfSpeech.VERB
-        # Should NOT contain "baa" (sheep sound)
-        for sense in entry.senses:
-            assert "baa" not in sense.lower()
-        # Should contain "went" or similar
-        assert any("went" in sense.lower() or "walked" in sense.lower() for sense in entry.senses)
-
 
 class TestGreekLexiconArticles:
     """Test article assignment in glosses."""

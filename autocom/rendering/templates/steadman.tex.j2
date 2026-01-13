@@ -38,7 +38,7 @@
 {% for token in doc.core_vocabulary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
 {% if token.gloss.best %}
-\textbf{{ "{" }}{% if token.gloss.article %}{{ token.gloss.article }} {% endif %}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency %}, {{ token.gloss.frequency }}{% endif %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.article %}, {{ token.gloss.article }}{% endif %}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency %}, {{ token.gloss.frequency }}{% endif %}
 
 {% endif %}
 {% endfor %}
@@ -73,7 +73,7 @@
 \begin{multicols}{2}
 {% for token in page.lines | sorted_glossary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
-\textbf{{ "{" }}{% if token.gloss.article %}{{ token.gloss.article }} {% endif %}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency and token.gloss.frequency > 1 %}, {{ token.gloss.frequency }}{% endif %}
+\textbf{{ "{" }}{{ hw | latex_escape }}{% if token.gloss.article %}, {{ token.gloss.article }}{% endif %}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.frequency and token.gloss.frequency > 1 %}, {{ token.gloss.frequency }}{% endif %}
 
 {% endfor %}
 \end{multicols}
