@@ -4,8 +4,11 @@ Greek morphological analysis and parsing tools.
 
 from __future__ import annotations
 
+import re
 import urllib.parse
 from typing import Any, Dict, List, Optional
+
+import requests
 
 try:
     from autocom.processing.api_client import get_api_client
@@ -52,29 +55,45 @@ class GreekParsingTools:
         self._lemma_cache: Dict[str, str] = {}
         self._pos_cache: Dict[str, List[str]] = {}
 
-    def get_lemma(self, word: str) -> str:
+    def get_lemma(self, word: str, timeout_seconds: float = 6.0) -> str:
         """
         Get lemma for a Greek word using available backends.
 
+        Priority order:
+        1. Morpheus API hdwd field (most accurate for Greek)
+        2. CLTK lemmatizer (fallback)
+        3. Original word with accents preserved (last resort)
+
         :param word: Greek word (may include accents/breathing)
-        :return: Lemmatized form
+        :param timeout_seconds: Timeout for API requests
+        :return: Lemmatized form (with proper Greek accents)
         """
         if word in self._lemma_cache:
             return self._lemma_cache[word]
 
-        # Try CLTK first if available
+        base_word, _ = split_enclitic(word)
+
+        # 1. Try Morpheus API first - it returns the dictionary headword (hdwd)
+        morpheus_lemma = self._get_lemma_from_morpheus(base_word, timeout_seconds)
+        if morpheus_lemma:
+            # Preserve original capitalization for proper nouns
+            if word and word[0].isupper() and morpheus_lemma and morpheus_lemma[0].islower():
+                morpheus_lemma = morpheus_lemma[0].upper() + morpheus_lemma[1:]
+            self._lemma_cache[word] = morpheus_lemma
+            return morpheus_lemma
+
+        # 2. Try CLTK lemmatizer as fallback
         if self._prefer_cltk and self.lemmatizer is not None:
             try:
-                # Strip enclitic and normalize for analysis
-                base_word, _ = split_enclitic(word)
+                # CLTK needs normalized input but we want accented output
                 normalized = strip_accents_and_breathing(base_word).lower()
-
                 result = self.lemmatizer.lemmatize([normalized])
                 if result and len(result) > 0:
                     first_result = result[0]
                     if isinstance(first_result, (list, tuple)) and len(first_result) >= 2:
                         lemma = first_result[1]
-                        if isinstance(lemma, str) and lemma.strip():
+                        # Check if CLTK actually found a different lemma (not just echoing input)
+                        if isinstance(lemma, str) and lemma.strip() and lemma != normalized:
                             # Preserve original capitalization
                             if word and word[0].isupper():
                                 lemma = lemma[0].upper() + lemma[1:] if lemma else lemma
@@ -83,16 +102,80 @@ class GreekParsingTools:
             except Exception:
                 pass
 
-        # Fallback: return the word with accents stripped
-        base_word, _ = split_enclitic(word)
-        lemma = strip_accents_and_breathing(base_word)
+        # 3. Fallback: return the ORIGINAL word WITH accents preserved
+        # This is better than stripping accents - at least the form is recognizable
+        lemma = base_word
 
         # Preserve capitalization
-        if word and word[0].isupper() and lemma:
+        if word and word[0].isupper() and lemma and lemma[0].islower():
             lemma = lemma[0].upper() + lemma[1:]
 
         self._lemma_cache[word] = lemma
         return lemma
+
+    def _get_lemma_from_morpheus(self, word: str, timeout_seconds: float = 6.0) -> Optional[str]:
+        """
+        Query Morpheus API and extract the dictionary headword (hdwd).
+
+        The hdwd field contains the proper dictionary lemma with correct accents.
+
+        :param word: Greek word to look up
+        :param timeout_seconds: Request timeout
+        :return: Dictionary headword or None if not found
+        """
+        try:
+            url = f"{self._morpheus_url}{urllib.parse.quote(word)}"
+
+            if _API_CLIENT_AVAILABLE:
+                api_client = get_api_client()
+                data = api_client.get(url, timeout=timeout_seconds)
+            else:
+                response = requests.get(url, timeout=timeout_seconds)
+                response.raise_for_status()
+                data = response.json()
+
+            if not data:
+                return None
+
+            # Extract hdwd from response
+            try:
+                body = data["RDF"]["Annotation"]["Body"]["rest"]["entry"]
+            except (KeyError, TypeError):
+                return None
+
+            def _extract_hdwd(entry: Dict[str, Any]) -> Optional[str]:
+                """Extract headword from a single entry."""
+                try:
+                    hdwd_node = entry["dict"]["hdwd"]
+                    if isinstance(hdwd_node, dict) and "$" in hdwd_node:
+                        hdwd = hdwd_node["$"]
+                    elif isinstance(hdwd_node, str):
+                        hdwd = hdwd_node
+                    else:
+                        return None
+
+                    # Clean up hdwd - remove bracketed numbers like "ἄγω [2]"
+                    if hdwd:
+                        hdwd = re.sub(r"\s*\[\d+\]$", "", hdwd).strip()
+                    return hdwd if hdwd else None
+                except (KeyError, TypeError):
+                    return None
+
+            # Handle single entry or list of entries
+            if isinstance(body, list):
+                # Prefer non-proper-noun entries, but accept any valid hdwd
+                for entry in body:
+                    if isinstance(entry, dict):
+                        hdwd = _extract_hdwd(entry)
+                        if hdwd:
+                            return hdwd
+            elif isinstance(body, dict):
+                return _extract_hdwd(body)
+
+            return None
+
+        except Exception:
+            return None
 
     def get_pos(self, word: str, timeout_seconds: float = 6.0) -> List[str]:
         """
