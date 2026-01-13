@@ -224,7 +224,9 @@ class MorpheusNormalizer:
 
         # Add nominal fields
         if pos in (PartOfSpeech.NOUN, PartOfSpeech.ADJECTIVE, PartOfSpeech.PRONOUN):
-            if gender:
+            # Only set gender for nouns/pronouns, not adjectives
+            # Adjectives have paradigm endings in genitive field instead of gender
+            if gender and pos != PartOfSpeech.ADJECTIVE:
                 entry_kwargs["gender"] = gender
             if declension:
                 entry_kwargs["declension"] = declension
@@ -563,11 +565,16 @@ class MorpheusNormalizer:
         declension: Optional[int],
         gender: Optional[Gender],
     ) -> Optional[str]:
-        """Extract or infer genitive ending for nouns."""
+        """Extract or infer genitive ending for nouns and adjective paradigms."""
         # Check if genitive is provided in data
         gen = morpheus_data.get("genitive", "")
         if gen:
-            # Format as ending
+            # If contains comma, it's an adjective paradigm - preserve as-is
+            # e.g., "πολλή, πολύ" or "-η, -ον"
+            if "," in gen:
+                return gen
+
+            # Format as ending for regular noun genitives
             if not gen.startswith("-"):
                 # Extract ending from full form
                 gen = "-" + gen[-3:] if len(gen) > 3 else "-" + gen
