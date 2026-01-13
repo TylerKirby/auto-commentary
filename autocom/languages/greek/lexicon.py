@@ -811,9 +811,9 @@ class GreekLexicon:
             frequency: Optional occurrence count for this lemma
 
         The method tries multiple lookup strategies:
-        1. First tries the analyzer's lemma
-        2. If that fails or has no senses, tries the original word form
-        3. Falls back to alternative lemma guesses
+        1. First tries the analyzer's lemma (may be inflected if lemmatization failed)
+        2. If that fails or has no senses, tries the original word form via Morpheus
+        3. Falls back to alternative lemma guesses (number suffix stripping, etc.)
         """
         if token.is_punct:
             return token
@@ -821,11 +821,15 @@ class GreekLexicon:
         lemma = token.analysis.lemma if token.analysis else token.text
         entry = None
 
-        # Try analyzer's lemma first
+        # Try analyzer's lemma first (this works well when lemmatization succeeded)
         entry = self.lookup_normalized(lemma)
 
-        # If no senses found, try the original word form (often better with Morpheus)
-        if (not entry or not entry.senses) and token.text != lemma:
+        # If no senses found, try the original word form
+        # This is especially important when lemmatization failed (lemma == word)
+        # because Morpheus can resolve inflected forms to proper lemmas
+        if not entry or not entry.senses:
+            # Always try the word form - even if lemma == word, because
+            # lookup_normalized will try Morpheus which can resolve inflected forms
             word_entry = self.lookup_normalized(token.text)
             if word_entry and word_entry.senses:
                 entry = word_entry
@@ -851,18 +855,34 @@ class GreekLexicon:
         return token
 
     def _get_alternative_lemmas(self, word: str, lemma: str) -> List[str]:
-        """Generate alternative lemma guesses."""
+        """Generate alternative lemma guesses.
+
+        Tries various transformations to find a matching vocabulary entry:
+        - Strip number suffixes (δέω2 -> δέω) for homograph entries
+        - Strip accents and breathing marks
+        - Try the original word form
+        """
         alternatives = []
+
+        # Strip number suffixes from lemma (handles homograph entries like δέω2, ἄν1)
+        lemma_no_num = re.sub(r"\d+$", "", lemma)
+        if lemma_no_num != lemma and lemma_no_num:
+            alternatives.append(lemma_no_num)
 
         # Try without accents
         unaccented = strip_accents_and_breathing(lemma)
         if unaccented != lemma:
             alternatives.append(unaccented)
 
-        # Try the original word form
+        # Try the original word form (helps when lemmatization failed)
         if word != lemma:
             alternatives.append(word)
             alternatives.append(strip_accents_and_breathing(word))
+
+        # Also try word without number suffix
+        word_no_num = re.sub(r"\d+$", "", word)
+        if word_no_num != word and word_no_num:
+            alternatives.append(word_no_num)
 
         return alternatives
 
