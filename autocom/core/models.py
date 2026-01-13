@@ -53,6 +53,7 @@ class Gloss(BaseModel):
     gender: Optional[str] = None  # e.g., "n." for neuter
     pos_abbrev: Optional[str] = None  # e.g., "v." for verb, "adj." for adjective
     principal_parts: Optional[str] = None  # for verbs: "cecinī, cantum (3)"
+    article: Optional[str] = None  # Greek article for nouns: ὁ, ἡ, τό
     frequency: Optional[int] = None  # occurrence count in text
     # Provenance fields (from normalization layer)
     source: Optional[str] = None  # e.g., "whitakers", "lewis_short"
@@ -141,6 +142,7 @@ class Gloss(BaseModel):
             gender=gender_abbrev,
             pos_abbrev=pos_abbrev,
             principal_parts=principal_parts_str,
+            article=entry.article,
             frequency=frequency or entry.frequency,
             source=entry.source,
             confidence=entry.confidence,
