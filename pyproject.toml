@@ -2,9 +2,8 @@
 profile = "black"
 line_length = 120
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
+# Note: pytest configuration is in pytest.ini (takes precedence)
+# [tool.pytest.ini_options] markers are defined in pytest.ini
 
 [tool.ruff]
 line-length = 120

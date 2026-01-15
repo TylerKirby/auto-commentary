@@ -598,8 +598,8 @@ class TestNormalizedLexicalEntryValidation:
             )
 
     def test_conjugation_bounds(self):
-        """Conjugation must be 1-4."""
-        # Valid
+        """Conjugation must be 1-9 (1-4 regular, 5-9 irregular verbs like ESSE, IRE, etc.)."""
+        # Valid: regular conjugation
         entry = NormalizedLexicalEntry(
             headword="test",
             lemma="test",
@@ -610,7 +610,18 @@ class TestNormalizedLexicalEntryValidation:
         )
         assert entry.conjugation == 4
 
-        # Invalid: 5
+        # Valid: irregular conjugation (e.g., ESSE)
+        entry_irreg = NormalizedLexicalEntry(
+            headword="sum",
+            lemma="sum",
+            language=Language.LATIN,
+            pos=PartOfSpeech.VERB,
+            source="test",
+            conjugation=9,
+        )
+        assert entry_irreg.conjugation == 9
+
+        # Invalid: 0 (below minimum)
         with pytest.raises(ValidationError):
             NormalizedLexicalEntry(
                 headword="test",
@@ -618,7 +629,18 @@ class TestNormalizedLexicalEntryValidation:
                 language=Language.LATIN,
                 pos=PartOfSpeech.VERB,
                 source="test",
-                conjugation=5,
+                conjugation=0,
+            )
+
+        # Invalid: 10 (above maximum)
+        with pytest.raises(ValidationError):
+            NormalizedLexicalEntry(
+                headword="test",
+                lemma="test",
+                language=Language.LATIN,
+                pos=PartOfSpeech.VERB,
+                source="test",
+                conjugation=10,
             )
 
     def test_required_fields(self):

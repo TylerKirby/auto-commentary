@@ -114,7 +114,7 @@ Raw Extraction (source-specific) → Normalizer → NormalizedLexicalEntry → G
 ```
 
 ### Latin Processing
-The `LatinAnalyzer` in `autocom/pipeline/analyze.py` supports multiple backends:
+The `LatinAnalyzer` in `autocom/processing/analyze.py` supports multiple backends:
 - **spaCy-UDPipe**: Preferred when available (models: perseus, proiel, ittb)
 - **CLTK**: Fallback lemmatizer and NLP tools
 - **Morpheus**: Public API for morphological analysis at morph.perseids.org
@@ -122,7 +122,7 @@ The `LatinAnalyzer` in `autocom/pipeline/analyze.py` supports multiple backends:
 ### Lexicon and Enrichment
 - `autocom/languages/latin/lexicon.py`: Dictionary lookup with Whitaker's Words (primary) and Lewis & Short (fallback)
 - `autocom/languages/latin/cache.py`: SQLite-based persistent cache for dictionary lookups
-- `autocom/pipeline/enrich.py`: Frequency tracking and first-occurrence marking
+- `autocom/processing/enrich.py`: Frequency tracking and first-occurrence marking
 
 ### Dictionary Cache
 The `DictionaryCache` class provides persistent SQLite caching for dictionary lookups:
@@ -146,6 +146,65 @@ The `DictionaryCache` class provides persistent SQLite caching for dictionary lo
 - `integration`: Tests with external services
 - `whitakers`: Tests requiring whitakers_words package
 - `cltk`: Tests requiring CLTK package
+- `regression`: Golden output regression tests
+
+### Testing Best Practices
+
+#### Test Organization
+Tests are organized by component:
+- `tests/core/` - Core models and lexical types
+- `tests/processing/` - Analysis, enrichment, layout
+- `tests/languages/{latin,greek}/` - Language-specific lexicons and caching
+- `tests/rendering/` - LaTeX templates and PDF generation
+- `tests/regression/` - Golden output regression tests
+
+#### Behavior-Based Testing
+Write tests that verify **behavior**, not **implementation details**:
+
+```python
+# BAD: Tests implementation detail
+def test_get_lemma_not_a_word():
+    tools = LatinParsingTools()
+    assert tools.get_lemma("not_a_word") == "not_a_word"  # Brittle - spaCy may transform
+
+# GOOD: Tests behavior guarantee
+def test_get_lemma_returns_string():
+    tools = LatinParsingTools()
+    result = tools.get_lemma("unknown_word")
+    assert isinstance(result, str)
+    assert len(result) > 0  # Always returns non-empty string
+```
+
+#### Golden Output Tests (Regression Prevention)
+The `tests/regression/test_golden_output.py` file contains golden output tests that prevent regressions:
+
+- **Purpose**: Catch unintended changes to glossary output
+- **Coverage**: Verify specific lemmas and definitions exist
+- **Update policy**: When intentionally improving output, update expected values
+
+Example golden test:
+```python
+def test_arma_present(self, latin_glossary):
+    """The word 'arma' (arms/weapons) must be in glossary."""
+    assert "arma" in latin_glossary or "armum" in latin_glossary
+    entry = latin_glossary.get("arma") or latin_glossary.get("armum")
+    assert "arm" in entry["definition"].lower()
+```
+
+#### Common Testing Pitfalls
+
+1. **Exact string matching on unknown inputs**: NLP backends may transform unknown words differently. Test the contract (returns string) not the specific output.
+
+2. **Testing with spaCy enabled when mocking CLTK**: SpaCy caches models at the class level. Use `prefer_spacy=False` or clear `_SPACY_MODELS` cache when testing CLTK fallback behavior.
+
+3. **Hardcoded model bounds**: When models change (e.g., `conjugation` expanded from 1-4 to 1-9), update tests to match the actual model definition.
+
+4. **Not clearing caches between test cases**: `_lemma_cache` and `_pos_cache` persist within a test class. Call `.clear()` between test cases that need fresh state.
+
+#### Using Fixtures Effectively
+- Use `scope="session"` for expensive operations (loading analyzers, lexicons)
+- Use `scope="class"` for fixtures shared across tests in a class
+- Use `scope="function"` for fixtures that need fresh state each test
 
 ### LaTeX Dependencies
 Requires XeLaTeX (for native Unicode/Greek character support) with packages:

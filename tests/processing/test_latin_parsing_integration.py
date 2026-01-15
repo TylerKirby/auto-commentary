@@ -11,6 +11,67 @@ from autocom.processing.analyze import LatinAnalyzer, LatinParsingTools, get_ana
 from autocom.core.models import Token, Line, Analysis
 
 
+# ============================================================================
+# Unit Tests for LatinParsingTools
+# ============================================================================
+
+
+class TestLatinParsingToolsUnit:
+    """Unit tests for LatinParsingTools lemmatization."""
+
+    @pytest.mark.parametrize(
+        "word,lemma",
+        [
+            ("puellae", "puella"),  # noun
+            ("amantis", "amor"),  # spaCy interprets as genitive of amor (noun)
+            ("omnis", "omnis"),  # adjective
+            ("Ciceronis", "Cicero"),  # proper noun
+        ],
+    )
+    def test_get_lemma(self, word, lemma):
+        """Test get_lemma returns expected lemmas for known Latin words."""
+        tools = LatinParsingTools()
+        output = tools.get_lemma(word)
+        assert output == lemma
+
+    def test_get_lemma_returns_string(self):
+        """Test that get_lemma always returns a string, even for unknown words."""
+        tools = LatinParsingTools()
+        result = tools.get_lemma("xyznotaword")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_get_lemma_preserves_capitalization(self):
+        """Test that proper nouns preserve capitalization."""
+        tools = LatinParsingTools()
+        result = tools.get_lemma("Ciceronis")
+        assert result[0].isupper(), "Proper noun lemma should preserve capitalization"
+
+    def test_get_lemma_error_handling_without_spacy(self, monkeypatch):
+        """Test that get_lemma raises appropriate errors when CLTK fails (spaCy disabled)."""
+        tools = LatinParsingTools(prefer_spacy=False)
+        tools._spacy_nlp = None
+
+        # Test case 1: empty list returned by lemmatizer
+        monkeypatch.setattr(tools.lemmatizer, "lemmatize", lambda x: [])
+        with pytest.raises(IndexError):
+            tools.get_lemma("test_word")
+
+        tools._lemma_cache.clear()
+
+        # Test case 2: malformed data (missing second element)
+        monkeypatch.setattr(tools.lemmatizer, "lemmatize", lambda x: [["single_element"]])
+        with pytest.raises(IndexError):
+            tools.get_lemma("test_word")
+
+        tools._lemma_cache.clear()
+
+        # Test case 3: None returned by lemmatizer
+        monkeypatch.setattr(tools.lemmatizer, "lemmatize", lambda x: None)
+        with pytest.raises(TypeError):
+            tools.get_lemma("test_word")
+
+
 class TestLatinParsingToolsIntegration:
     """Test suite for LatinParsingTools integration."""
 

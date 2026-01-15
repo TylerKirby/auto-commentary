@@ -247,15 +247,28 @@ class TestLatinEdgeCases:
             assert isinstance(result_pos, list)
 
     def test_spacy_model_loading_failure(self):
-        """Test behavior when spaCy model loading fails."""
-        with patch("autocom.processing.analyze._SPACY_UDPIPE_AVAILABLE", True):
-            with patch("autocom.processing.analyze._spacy_udpipe") as mock_spacy:
-                mock_spacy.load.side_effect = Exception("Model not found")
-                mock_spacy.download.side_effect = Exception("Download failed")
+        """Test behavior when spaCy model loading fails - system falls back to CLTK."""
+        # Clear any cached models to ensure fresh loading attempt
+        original_cache = LatinParsingTools._SPACY_MODELS.copy()
+        LatinParsingTools._SPACY_MODELS.clear()
 
-                # Should handle gracefully and fall back
-                tools = LatinParsingTools(prefer_spacy=True)
-                assert tools._spacy_nlp is None
+        try:
+            with patch("autocom.processing.analyze._SPACY_UDPIPE_AVAILABLE", True):
+                with patch("autocom.processing.analyze._spacy_udpipe") as mock_spacy:
+                    mock_spacy.load.side_effect = Exception("Model not found")
+                    mock_spacy.download.side_effect = Exception("Download failed")
+
+                    # Should handle gracefully - _spacy_nlp will be None
+                    tools = LatinParsingTools(prefer_spacy=True)
+                    assert tools._spacy_nlp is None
+
+                    # And the system should still work via CLTK fallback
+                    result = tools.get_lemma("puella")
+                    assert isinstance(result, str)
+                    assert len(result) > 0
+        finally:
+            # Restore original cache to not affect other tests
+            LatinParsingTools._SPACY_MODELS.update(original_cache)
 
     def test_memory_usage_with_large_inputs(self, lemmatizer):
         """Test memory usage doesn't explode with large inputs."""
