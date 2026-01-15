@@ -19,7 +19,14 @@ except ImportError:
 
 from autocom.core.models import Analysis
 
-from .text_processing import split_enclitic, strip_accents_and_breathing
+from .text_processing import (
+    ELISION_RESTORATIONS,
+    get_elision_candidates,
+    is_elided,
+    split_enclitic,
+    strip_accents_and_breathing,
+    strip_elision_marker,
+)
 
 try:
     import importlib
@@ -37,6 +44,69 @@ except Exception:
 
 class GreekParsingTools:
     """Parsing tools for Ancient Greek leveraging multiple backends."""
+
+    # Common function words where CLTK/Morpheus may produce wrong lemmas
+    # Maps normalized (accent-stripped) forms to correct lemmas
+    FUNCTION_WORD_LEMMAS = {
+        # Single-letter forms after elision marker stripped by tokenizer
+        # δ᾽ → δ (tokenized) → δέ (lemma)
+        "δ": "δέ",
+        "τ": "τέ",
+        "γ": "γέ",
+        "μ": "ἐγώ",  # μ' (elided accusative με)
+        "σ": "σύ",  # σ' (elided accusative σε)
+        # Relative pronouns (ὅς, ἥ, ὅ) - CLTK often gets these very wrong
+        "η": "ὅς",  # ἥ - fem nom sg
+        "ην": "ὅς",  # ἥν - fem acc sg
+        "ης": "ὅς",  # ἧς - fem gen sg
+        "ῃ": "ὅς",  # ᾗ - fem dat sg
+        # (These could also be articles, but relative pronoun is more common in poetry)
+        # Particles and conjunctions
+        "δε": "δέ",
+        "τε": "τέ",
+        "γε": "γέ",
+        "μεν": "μέν",
+        "γαρ": "γάρ",
+        "ουν": "οὖν",
+        "αλλα": "ἀλλά",
+        "και": "καί",
+        "ου": "οὐ",
+        "ουκ": "οὐκ",
+        "μη": "μή",
+        # Common prepositions
+        "εν": "ἐν",
+        "εις": "εἰς",
+        "εκ": "ἐκ",
+        "εξ": "ἐξ",
+        "απο": "ἀπό",
+        "προς": "πρός",
+        "περι": "περί",
+        "κατα": "κατά",
+        "μετα": "μετά",
+        "υπο": "ὑπό",
+        "δια": "διά",
+        # Common adverbs
+        "νυν": "νῦν",
+        "ως": "ὡς",
+        # Common elided forms (tokenizer strips marker, leaving incomplete words)
+        # These are high-frequency elisions in Homeric poetry
+        "αλλ": "ἀλλά",  # ἀλλ᾽ before vowel
+        "επ": "ἐπί",  # ἐπ᾽ before vowel
+        "απ": "ἀπό",  # ἀπ᾽ before vowel
+        "υπ": "ὑπό",  # ὑπ᾽ before vowel
+        "κατ": "κατά",  # κατ᾽ before vowel
+        "μετ": "μετά",  # μετ᾽ before vowel
+        "παρ": "παρά",  # παρ᾽ before vowel
+        "δι": "διά",  # δι᾽ before vowel
+        "ουδ": "οὐδέ",  # οὐδ᾽ before vowel
+        "μηδ": "μηδέ",  # μηδ᾽ before vowel
+        # Common elided nouns/adjectives in Homeric poetry
+        "μυρι": "μυρίος",  # μυρί᾽ = μυρία "countless" (NOT μύρω "flow")
+        "αλγε": "ἄλγος",  # ἄλγε᾽ = ἄλγεα "pains, griefs"
+        "εργ": "ἔργον",  # ἔργ᾽ = ἔργα "works, deeds"
+        "οπλ": "ὅπλον",  # ὅπλ᾽ = ὅπλα "arms, weapons"
+        "δωρ": "δῶρον",  # δῶρ᾽ = δῶρα "gifts"
+    }
 
     def __init__(self, prefer_cltk: bool = True) -> None:
         self._prefer_cltk = prefer_cltk and _CLTK_AVAILABLE
@@ -60,9 +130,11 @@ class GreekParsingTools:
         Get lemma for a Greek word using available backends.
 
         Priority order:
-        1. Morpheus API hdwd field (most accurate for Greek)
-        2. CLTK lemmatizer (fallback)
-        3. Original word with accents preserved (last resort)
+        1. Elision handling (δ᾽ → δέ, ἄλγ᾽ → ἄλγος)
+        2. Function word overrides (bypass API for common words)
+        3. Morpheus API hdwd field (most accurate for Greek)
+        4. CLTK lemmatizer (fallback)
+        5. Original word with accents preserved (last resort)
 
         :param word: Greek word (may include accents/breathing)
         :param timeout_seconds: Timeout for API requests
@@ -71,9 +143,29 @@ class GreekParsingTools:
         if word in self._lemma_cache:
             return self._lemma_cache[word]
 
-        base_word, _ = split_enclitic(word)
+        # 1. Handle elided words first (e.g., δ᾽, ἄλγ᾽, μυρί᾽)
+        if is_elided(word):
+            lemma = self._get_elided_lemma(word, timeout_seconds)
+            if lemma:
+                # Preserve original capitalization for proper nouns
+                if word and word[0].isupper() and lemma and lemma[0].islower():
+                    lemma = lemma[0].upper() + lemma[1:]
+                self._lemma_cache[word] = lemma
+                return lemma
 
-        # 1. Try Morpheus API first - it returns the dictionary headword (hdwd)
+        base_word, _ = split_enclitic(word)
+        normalized = strip_accents_and_breathing(base_word).lower()
+
+        # 2. Check function word overrides (common particles, pronouns, etc.)
+        # These are words where Morpheus/CLTK often gives wrong results
+        if normalized in self.FUNCTION_WORD_LEMMAS:
+            lemma = self.FUNCTION_WORD_LEMMAS[normalized]
+            if word and word[0].isupper():
+                lemma = lemma[0].upper() + lemma[1:] if lemma else lemma
+            self._lemma_cache[word] = lemma
+            return lemma
+
+        # 3. Try Morpheus API - it returns the dictionary headword (hdwd)
         morpheus_lemma = self._get_lemma_from_morpheus(base_word, timeout_seconds)
         if morpheus_lemma:
             # Preserve original capitalization for proper nouns
@@ -82,11 +174,9 @@ class GreekParsingTools:
             self._lemma_cache[word] = morpheus_lemma
             return morpheus_lemma
 
-        # 2. Try CLTK lemmatizer as fallback
+        # 4. Try CLTK lemmatizer as fallback
         if self._prefer_cltk and self.lemmatizer is not None:
             try:
-                # CLTK needs normalized input but we want accented output
-                normalized = strip_accents_and_breathing(base_word).lower()
                 result = self.lemmatizer.lemmatize([normalized])
                 if result and len(result) > 0:
                     first_result = result[0]
@@ -102,8 +192,7 @@ class GreekParsingTools:
             except Exception:
                 pass
 
-        # 3. Fallback: return the ORIGINAL word WITH accents preserved
-        # This is better than stripping accents - at least the form is recognizable
+        # 5. Fallback: return the ORIGINAL word WITH accents preserved
         lemma = base_word
 
         # Preserve capitalization
@@ -112,6 +201,55 @@ class GreekParsingTools:
 
         self._lemma_cache[word] = lemma
         return lemma
+
+    def _get_elided_lemma(self, word: str, timeout_seconds: float = 6.0) -> Optional[str]:
+        """
+        Get lemma for an elided Greek word.
+
+        Tries multiple strategies:
+        1. Single-letter restorations (δ᾽ → δέ)
+        2. Morpheus API on elided form (it often handles elision)
+        3. Try restored candidates with vowel additions
+        4. Fall back to base form
+
+        :param word: Elided word (e.g., δ᾽, ἄλγε᾽, μυρί᾽)
+        :param timeout_seconds: API timeout
+        :return: Best lemma guess or None
+        """
+        base = strip_elision_marker(word)
+        if not base:
+            return None
+
+        normalized = strip_accents_and_breathing(base).lower()
+
+        # 1. Check single-letter restorations (δ → δέ, τ → τέ, etc.)
+        if normalized in ELISION_RESTORATIONS:
+            return ELISION_RESTORATIONS[normalized]
+
+        # 2. Check if base form matches a function word
+        if normalized in self.FUNCTION_WORD_LEMMAS:
+            return self.FUNCTION_WORD_LEMMAS[normalized]
+
+        # 3. Try Morpheus on the elided form - it may recognize it
+        morpheus_lemma = self._get_lemma_from_morpheus(base, timeout_seconds)
+        if morpheus_lemma:
+            return morpheus_lemma
+
+        # 4. Try restored candidates (add vowels: α, ε, ο, η, ι)
+        for candidate in get_elision_candidates(word):
+            candidate_normalized = strip_accents_and_breathing(candidate).lower()
+
+            # Check function word overrides
+            if candidate_normalized in self.FUNCTION_WORD_LEMMAS:
+                return self.FUNCTION_WORD_LEMMAS[candidate_normalized]
+
+            # Try Morpheus on restored candidate
+            morpheus_lemma = self._get_lemma_from_morpheus(candidate, timeout_seconds)
+            if morpheus_lemma:
+                return morpheus_lemma
+
+        # 5. Return base form as fallback
+        return base
 
     def _get_lemma_from_morpheus(self, word: str, timeout_seconds: float = 6.0) -> Optional[str]:
         """

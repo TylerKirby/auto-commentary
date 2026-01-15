@@ -70,11 +70,13 @@ python -m autocom.cli.main commentary examples/sample_latin_short.txt --pdf --ou
 ### Core Pipeline
 The application follows a deterministic pipeline architecture:
 
-1. **Ingestion** (`autocom/pipeline/ingest.py`): Text normalization, language detection, tokenization
-2. **Analysis** (`autocom/pipeline/analyze.py`): Morphological analysis using CLTK, spaCy, or Morpheus
-3. **Enrichment** (`autocom/pipeline/enrich.py`): Glossing and frequency analysis
-4. **Layout** (`autocom/pipeline/layout.py`): Document structure and pagination
+1. **Ingestion** (`autocom/processing/ingest.py`): Text normalization, language detection, tokenization
+2. **Analysis** (`autocom/processing/analyze.py`): Morphological analysis using CLTK, spaCy, or Morpheus
+3. **Enrichment** (`autocom/processing/enrich.py`): Glossing and frequency analysis
+4. **Layout** (`autocom/processing/layout.py`): Document structure and pagination
 5. **Rendering** (`autocom/rendering/`): LaTeX and PDF generation via XeLaTeX
+
+**Note**: The module is `autocom.processing`, NOT `autocom.pipeline`. This is a common source of import errors.
 
 ### Domain Models
 Core data structures defined in `autocom/core/models.py`:

@@ -255,3 +255,82 @@ def is_greek_text(text: str) -> bool:
 
     # Consider text Greek if >50% of alphabetic characters are Greek
     return total_chars > 0 and (greek_chars / total_chars) > 0.5
+
+
+def is_elided(word: str) -> bool:
+    """
+    Check if a Greek word has elision (vowel dropped at end).
+
+    Elision markers include:
+    - ᾽ (Greek koronis U+1FBD)
+    - ' (right single quote)
+    - ' (modifier letter apostrophe)
+
+    :param word: Greek word to check
+    :return: True if word appears to have elision
+    """
+    if not word:
+        return False
+    # Check for elision markers at end
+    return word.endswith("᾽") or word.endswith("'") or word.endswith("'")
+
+
+def strip_elision_marker(word: str) -> str:
+    """
+    Remove elision marker from word.
+
+    :param word: Word with potential elision marker
+    :return: Word without trailing elision marker
+    """
+    if not word:
+        return word
+    while word and (word.endswith("᾽") or word.endswith("'") or word.endswith("'")):
+        word = word[:-1]
+    return word
+
+
+def get_elision_candidates(word: str) -> list[str]:
+    """
+    Generate candidate restorations for an elided Greek word.
+
+    For an elided word like μυρί᾽, generates candidates by adding
+    common elided vowels: α, ε, ο (most common in Greek elision).
+
+    :param word: Elided Greek word (with or without marker)
+    :return: List of candidate full forms
+    """
+    if not word:
+        return []
+
+    # Strip elision marker if present
+    base = strip_elision_marker(word)
+    if not base:
+        return []
+
+    candidates = []
+
+    # Common elided vowels in Greek (ordered by frequency)
+    elided_vowels = ["α", "ε", "ο", "η", "ι"]
+
+    for vowel in elided_vowels:
+        candidates.append(base + vowel)
+
+    # Also try the base form itself (for lookup)
+    candidates.append(base)
+
+    return candidates
+
+
+# Common single-letter elided forms and their full lemmas
+ELISION_RESTORATIONS = {
+    # δέ - conjunction/particle "but, and"
+    "δ": "δέ",
+    # τέ - conjunction "and"
+    "τ": "τέ",
+    # μέ - accusative of ἐγώ "me"
+    "μ": "ἐγώ",
+    # σέ - accusative of σύ "you"
+    "σ": "σύ",
+    # γέ - emphatic particle
+    "γ": "γέ",
+}
