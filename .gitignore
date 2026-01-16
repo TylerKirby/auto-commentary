@@ -157,3 +157,8 @@ evals/results
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Vamp swarm worktrees
+.vamp-workers/
+.vamp-worker
+.swarm-prompt
