@@ -44,25 +44,20 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-The easiest way to generate a commentary:
+Generate a commentary PDF:
 
 ```bash
-./generate_commentary.sh examples/sample_latin_excerpt.txt
+# Activate virtual environment
+source venv/bin/activate
+
+# Generate Latin commentary
+python -m autocom.cli.main commentary examples/sample_latin_short.txt --pdf --output output/latin_sample
+
+# Generate Greek commentary
+python -m autocom.cli.main commentary examples/sample_greek.txt --pdf --output output/greek_sample
 ```
 
-This will:
-1. Process the text and detect the language
-2. Perform morphological analysis
-3. Look up definitions from dictionary sources
-4. Generate a LaTeX file with Steadman-style formatting
-5. Compile to PDF with XeLaTeX
-6. Open the PDF (on macOS)
-
-Specify lines per page as a second argument:
-
-```bash
-./generate_commentary.sh examples/sample_latin_excerpt.txt 8
-```
+The output will be in `output/<name>/commentary.pdf`.
 
 ## CLI Usage
 
@@ -108,7 +103,7 @@ autocom/
 ├── languages/        # Language-specific processing
 │   ├── latin/        # Latin lexicon, cache, analysis
 │   └── greek/        # Greek lexicon, analysis
-├── pipeline/         # Processing pipeline stages
+├── processing/       # Processing pipeline stages
 │   ├── ingest.py     # Text ingestion and tokenization
 │   ├── analyze.py    # Morphological analysis
 │   ├── enrich.py     # Glossing and frequency tracking
