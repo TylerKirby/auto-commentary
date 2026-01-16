@@ -1,12 +1,16 @@
-\documentclass{article}
+\documentclass[11pt]{article}
 \usepackage{fontspec}
 \usepackage{geometry}
 \usepackage{multicol}
 \usepackage{fancyhdr}
 \usepackage{xcolor}
+\usepackage{setspace}
 
 % Use system fonts with full Unicode support (XeLaTeX)
 \setmainfont{Times New Roman}[Ligatures=TeX]
+
+% Set line spacing for better readability
+\setstretch{1.15}
 
 % Page setup
 {% if doc.metadata.paper_size == "a4" %}
@@ -35,6 +39,8 @@
 \vspace{0.5em}
 
 \begin{multicols}{2}
+\raggedright
+\sloppy
 {% for token in doc.core_vocabulary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
 {% if token.gloss.best %}
@@ -70,6 +76,8 @@
 \vspace{0.5em}
 
 \begin{multicols}{2}
+\raggedright
+\sloppy
 {% for token in page.lines | sorted_glossary %}
 {% set hw = token.gloss.headword or token.analysis.lemma %}
 \textbf{{ "{" }}{% if token.gloss.article %}{{ token.gloss.article }} {% endif %}{{ hw | latex_escape }}{% if token.gloss.genitive %}, {{ token.gloss.genitive | latex_escape }}{% endif %}{{ "}" }}{% if not token.gloss.article %}{% if token.gloss.gender %} \textit{{ "{" }}{{ token.gloss.gender }}{{ "}" }}{% elif token.gloss.pos_abbrev %} \textit{{ "{" }}{{ token.gloss.pos_abbrev }}{{ "}" }}{% endif %}{% endif %}{% if token.gloss.principal_parts %} ({{ token.gloss.principal_parts | latex_escape }}){% endif %}: {{ token.gloss.best | latex_escape }}{% if token.gloss.first_occurrence_line %} ({{ token.gloss.first_occurrence_line }}){% endif %}
