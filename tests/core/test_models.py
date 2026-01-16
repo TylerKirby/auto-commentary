@@ -5,6 +5,8 @@ Tests cover Gloss creation from NormalizedLexicalEntry, article handling,
 and Steadman-style formatting.
 """
 
+import pytest
+
 from autocom.core.lexical import (
     Gender,
     GreekPrincipalParts,
@@ -13,7 +15,7 @@ from autocom.core.lexical import (
     NormalizedLexicalEntry,
     PartOfSpeech,
 )
-from autocom.core.models import Gloss, _extract_infinitive_ending
+from autocom.core.models import Gloss
 
 
 class TestGlossFromNormalizedEntry:
@@ -291,128 +293,3 @@ class TestGlossBestSense:
         """Returns None when no senses."""
         gloss = Gloss(lemma="test", senses=[])
         assert gloss.best is None
-
-
-class TestExtractInfinitiveEnding:
-    """Test _extract_infinitive_ending() helper function."""
-
-    def test_first_conjugation_with_macron(self):
-        """Extracts -āre for 1st conjugation verbs."""
-        assert _extract_infinitive_ending("amō", "amāre") == "-āre"
-        assert _extract_infinitive_ending("vocō", "vocāre") == "-āre"
-
-    def test_second_conjugation_with_macron(self):
-        """Extracts -ēre for 2nd conjugation verbs."""
-        assert _extract_infinitive_ending("moneō", "monēre") == "-ēre"
-        assert _extract_infinitive_ending("videō", "vidēre") == "-ēre"
-
-    def test_third_conjugation(self):
-        """Extracts -ere for 3rd conjugation verbs."""
-        assert _extract_infinitive_ending("dūcō", "dūcere") == "-ere"
-        assert _extract_infinitive_ending("capiō", "capere") == "-ere"
-
-    def test_fourth_conjugation_with_macron(self):
-        """Extracts -īre for 4th conjugation verbs."""
-        assert _extract_infinitive_ending("veniō", "venīre") == "-īre"
-        assert _extract_infinitive_ending("audiō", "audīre") == "-īre"
-
-    def test_without_macrons(self):
-        """Handles infinitives without macrons."""
-        assert _extract_infinitive_ending("amo", "amare") == "-are"
-        assert _extract_infinitive_ending("venio", "venire") == "-ire"
-
-    def test_deponent_infinitive(self):
-        """Handles deponent infinitives ending in -ī."""
-        assert _extract_infinitive_ending("sequor", "sequī") == "-ī"
-
-    def test_none_infinitive_returns_none(self):
-        """Returns None when infinitive is None or empty."""
-        assert _extract_infinitive_ending("amō", None) is None
-        assert _extract_infinitive_ending("amō", "") is None
-
-    def test_none_headword_uses_fallback(self):
-        """Uses fallback extraction when headword is None."""
-        assert _extract_infinitive_ending(None, "amāre") == "-āre"
-
-
-class TestGlossVerbInfinitiveEnding:
-    """Test that verbs include infinitive ending in Gloss.genitive field."""
-
-    def test_latin_verb_gets_infinitive_ending(self):
-        """Latin verbs have infinitive ending in genitive field (Steadman style)."""
-        entry = NormalizedLexicalEntry(
-            headword="amō",
-            lemma="amo",
-            language=Language.LATIN,
-            pos=PartOfSpeech.VERB,
-            senses=["to love"],
-            latin_principal_parts=LatinPrincipalParts(
-                present="amō",
-                infinitive="amāre",
-                perfect="amāvī",
-                supine="amātum",
-            ),
-            conjugation=1,
-            source="whitakers",
-        )
-
-        gloss = Gloss.from_normalized_entry(entry)
-
-        assert gloss.genitive == "-āre"
-        assert gloss.pos_abbrev == "v."
-        assert gloss.principal_parts == "amāvī, amātum (1)"
-
-    def test_fourth_conjugation_verb_ending(self):
-        """4th conjugation verbs get -īre ending."""
-        entry = NormalizedLexicalEntry(
-            headword="veniō",
-            lemma="venio",
-            language=Language.LATIN,
-            pos=PartOfSpeech.VERB,
-            senses=["to come"],
-            latin_principal_parts=LatinPrincipalParts(
-                present="veniō",
-                infinitive="venīre",
-                perfect="vēnī",
-                supine="ventum",
-            ),
-            conjugation=4,
-            source="whitakers",
-        )
-
-        gloss = Gloss.from_normalized_entry(entry)
-
-        assert gloss.genitive == "-īre"
-
-    def test_nouns_retain_original_genitive(self):
-        """Nouns retain their original genitive ending."""
-        entry = NormalizedLexicalEntry(
-            headword="terra",
-            lemma="terra",
-            language=Language.LATIN,
-            pos=PartOfSpeech.NOUN,
-            senses=["earth"],
-            gender=Gender.FEMININE,
-            genitive="-ae",
-            source="whitakers",
-        )
-
-        gloss = Gloss.from_normalized_entry(entry)
-
-        assert gloss.genitive == "-ae"
-
-    def test_verb_without_infinitive_no_ending(self):
-        """Verbs without infinitive don't get an ending."""
-        entry = NormalizedLexicalEntry(
-            headword="amō",
-            lemma="amo",
-            language=Language.LATIN,
-            pos=PartOfSpeech.VERB,
-            senses=["to love"],
-            # No principal parts
-            source="whitakers",
-        )
-
-        gloss = Gloss.from_normalized_entry(entry)
-
-        assert gloss.genitive is None

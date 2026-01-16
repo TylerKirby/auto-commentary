@@ -803,18 +803,12 @@ class GreekLexicon:
 
         return None
 
-    def enrich_token(
-        self,
-        token: Token,
-        frequency: Optional[int] = None,
-        first_occurrence_line: Optional[int] = None,
-    ) -> Token:
+    def enrich_token(self, token: Token, frequency: Optional[int] = None) -> Token:
         """Enrich a token with dictionary information.
 
         Args:
             token: The token to enrich
             frequency: Optional occurrence count for this lemma
-            first_occurrence_line: Optional line number where this lemma first appears
 
         The method tries multiple lookup strategies:
         1. First tries the analyzer's lemma (may be inflected if lemmatization failed)
@@ -850,19 +844,13 @@ class GreekLexicon:
                     break
 
         if entry and entry.senses:
-            token.gloss = Gloss.from_normalized_entry(
-                entry, frequency=frequency, first_occurrence_line=first_occurrence_line
-            )
+            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
         elif entry:
             # Entry exists but no senses
-            token.gloss = Gloss.from_normalized_entry(
-                entry, frequency=frequency, first_occurrence_line=first_occurrence_line
-            )
+            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
         else:
             # No definition found
-            token.gloss = Gloss(
-                lemma=lemma, senses=[], frequency=frequency, first_occurrence_line=first_occurrence_line
-            )
+            token.gloss = Gloss(lemma=lemma, senses=[], frequency=frequency)
 
         return token
 
@@ -898,42 +886,24 @@ class GreekLexicon:
 
         return alternatives
 
-    def enrich_line(
-        self,
-        line: Line,
-        frequency_map: Optional[Dict[str, int]] = None,
-        first_occurrence_line_map: Optional[Dict[str, int]] = None,
-    ) -> Line:
-        """Enrich a line with dictionary information.
-
-        Args:
-            line: The line to enrich
-            frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
-            first_occurrence_line_map: Optional dict mapping lowercase lemmas to first occurrence line numbers
-        """
+    def enrich_line(self, line: Line, frequency_map: Optional[Dict[str, int]] = None) -> Line:
+        """Enrich a line with dictionary information."""
         for token in line.tokens:
             if token.is_punct:
                 continue
             lemma = token.analysis.lemma if token.analysis else token.text
             freq = frequency_map.get(lemma.lower()) if frequency_map else None
-            first_line = first_occurrence_line_map.get(lemma.lower()) if first_occurrence_line_map else None
-            self.enrich_token(token, frequency=freq, first_occurrence_line=first_line)
+            self.enrich_token(token, frequency=freq)
         return line
 
-    def enrich(
-        self,
-        lines: Iterable[Line],
-        frequency_map: Optional[Dict[str, int]] = None,
-        first_occurrence_line_map: Optional[Dict[str, int]] = None,
-    ) -> List[Line]:
+    def enrich(self, lines: Iterable[Line], frequency_map: Optional[Dict[str, int]] = None) -> List[Line]:
         """Enrich lines with Greek glosses.
 
         Args:
             lines: Lines to enrich
             frequency_map: Optional dict mapping lowercase lemmas to counts
-            first_occurrence_line_map: Optional dict mapping lowercase lemmas to first occurrence line numbers
         """
-        return [self.enrich_line(line, frequency_map, first_occurrence_line_map) for line in lines]
+        return [self.enrich_line(line, frequency_map) for line in lines]
 
     # ========================================================================
     # Cache Management
@@ -974,14 +944,9 @@ class GreekLexiconService:
     def __init__(self) -> None:
         self.lexicon = GreekLexicon()
 
-    def enrich(
-        self,
-        lines: Iterable[Line],
-        frequency_map: Optional[Dict[str, int]] = None,
-        first_occurrence_line_map: Optional[Dict[str, int]] = None,
-    ) -> List[Line]:
+    def enrich(self, lines: Iterable[Line], frequency_map: Optional[Dict[str, int]] = None) -> List[Line]:
         """Enrich lines with Greek glosses - matches LatinLexicon interface."""
-        return self.lexicon.enrich(lines, frequency_map, first_occurrence_line_map)
+        return self.lexicon.enrich(lines, frequency_map)
 
     def get_definition(self, lemma: str) -> Optional[str]:
         """Get the best definition for a lemma."""
