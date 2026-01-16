@@ -142,10 +142,14 @@ def render(
     logger.info("Computing word frequencies")
     freq = enrich_mod.compute_frequency(lines)
 
-    # Get appropriate lexicon and enrich with frequency data
+    # Compute first occurrence line numbers
+    logger.info("Computing first occurrence line numbers")
+    first_occurrence_lines = enrich_mod.compute_first_occurrence_lines(lines)
+
+    # Get appropriate lexicon and enrich with frequency data and first occurrence lines
     lexicon = get_lexicon_for_language(detected_language)
     logger.info("Applying lexicon enrichment with frequency data")
-    lines = lexicon.enrich(lines, frequency_map=dict(freq))
+    lines = lexicon.enrich(lines, frequency_map=dict(freq), first_occurrence_line_map=first_occurrence_lines)
 
     # Apply language-specific enrichment (if available)
     if detected_language == "latin":
@@ -233,10 +237,14 @@ def commentary(
     logger.info("Computing word frequencies")
     freq = enrich_mod.compute_frequency(lines)
 
-    # Get appropriate lexicon and enrich with frequency data
+    # Compute first occurrence line numbers
+    logger.info("Computing first occurrence line numbers")
+    first_occurrence_lines = enrich_mod.compute_first_occurrence_lines(lines)
+
+    # Get appropriate lexicon and enrich with frequency data and first occurrence lines
     lexicon = get_lexicon_for_language(detected_language, enable_api_fallbacks=api_fallbacks)
     logger.info("Applying lexicon enrichment with frequency data (api_fallbacks=%s)", api_fallbacks)
-    lines = lexicon.enrich(lines, frequency_map=dict(freq))
+    lines = lexicon.enrich(lines, frequency_map=dict(freq), first_occurrence_line_map=first_occurrence_lines)
 
     # Apply language-specific enrichment (if available)
     if detected_language == "latin":

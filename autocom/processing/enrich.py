@@ -68,6 +68,30 @@ def compute_frequency(lines: Iterable[Line]) -> Counter:
     return freq
 
 
+def compute_first_occurrence_lines(lines: List[Line]) -> dict:
+    """Compute the line number where each lemma first appears.
+
+    Args:
+        lines: List of analyzed lines with line numbers
+
+    Returns:
+        Dict mapping lowercase lemma to line number of first occurrence
+    """
+    first_occurrence: dict = {}
+    for line in lines:
+        line_num = line.number
+        if line_num is None:
+            continue
+        for token in line.tokens:
+            if token.is_punct:
+                continue
+            lemma_or_text = token.analysis.lemma if token.analysis else token.text
+            key = lemma_or_text.lower()
+            if key not in first_occurrence:
+                first_occurrence[key] = line_num
+    return first_occurrence
+
+
 def mark_first_occurrences(lines: List[Line]) -> List[Line]:
     seen: Set[str] = set()
     for line in lines:

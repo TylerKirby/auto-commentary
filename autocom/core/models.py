@@ -55,6 +55,7 @@ class Gloss(BaseModel):
     principal_parts: Optional[str] = None  # for verbs: "cecinī, cantum (3)"
     article: Optional[str] = None  # Greek article for nouns: ὁ, ἡ, τό
     frequency: Optional[int] = None  # occurrence count in text
+    first_occurrence_line: Optional[int] = None  # line number where lemma first appears
     # Provenance fields (from normalization layer)
     source: Optional[str] = None  # e.g., "whitakers", "lewis_short"
     confidence: Optional[float] = None  # Match quality (1.0 = exact)
@@ -68,6 +69,7 @@ class Gloss(BaseModel):
         cls,
         entry: "NormalizedLexicalEntry",
         frequency: Optional[int] = None,
+        first_occurrence_line: Optional[int] = None,
     ) -> "Gloss":
         """Create a Gloss from a NormalizedLexicalEntry.
 
@@ -77,6 +79,7 @@ class Gloss(BaseModel):
         Args:
             entry: The normalized lexical entry
             frequency: Optional occurrence count for this lemma in text
+            first_occurrence_line: Optional line number where this lemma first appears
 
         Returns:
             A Gloss instance with Steadman-style formatting
@@ -144,6 +147,7 @@ class Gloss(BaseModel):
             principal_parts=principal_parts_str,
             article=entry.article,
             frequency=frequency or entry.frequency,
+            first_occurrence_line=first_occurrence_line,
             source=entry.source,
             confidence=entry.confidence,
         )
