@@ -99,14 +99,6 @@ REFERENCE_PATTERN = re.compile(
 # Greek text pattern (to optionally preserve or remove)
 GREEK_PATTERN = re.compile(r"[\u0370-\u03FF\u1F00-\u1FFF]+")
 
-# Pattern to detect Latin example text (common Latin words/patterns after a colon)
-# These typically contain author abbreviations or common Latin case endings
-LATIN_EXAMPLE_PATTERN = re.compile(
-    r":\s*[a-z]+\s+(?:enim|autem|igitur|quid|quod|ut|si|non|est|sunt|in|ad|"
-    r"cum|per|pro|de|ex|ab|hic|ille|qui|quae|quod|esse|fuit|erat)[,\s]",
-    re.IGNORECASE
-)
-
 
 class LewisShortNormalizer:
     """Normalizes Lewis & Short dictionary entries to canonical form.
@@ -148,9 +140,6 @@ class LewisShortNormalizer:
         headword = entry.get("title_orthography") or entry.get("key", "")
         if not headword:
             return None
-
-        # Strip trailing dictionary sense numerals (e.g., fastus1 -> fastus)
-        headword = re.sub(r"\d+$", "", headword)
 
         # Normalize lemma (lowercase, no macrons)
         lemma = self._normalize_lemma(query_lemma or headword)
@@ -432,14 +421,6 @@ class LewisShortNormalizer:
 
         # Remove "cf." references
         result = re.sub(r"\bcf\.\s+[^,;.]+[,;.]?\s*", "", result)
-
-        # Remove Latin example quotes after colons
-        # Pattern: "English definition : quid enim mali..." -> "English definition"
-        if LATIN_EXAMPLE_PATTERN.search(result):
-            # Find the colon and truncate before Latin examples
-            colon_match = re.search(r"\s*:\s*(?=[a-z])", result)
-            if colon_match and colon_match.start() > 15:  # Keep at least 15 chars of definition
-                result = result[: colon_match.start()]
 
         # Clean up punctuation artifacts
         result = re.sub(r"\s*[;:,]\s*$", "", result)  # Trailing punctuation

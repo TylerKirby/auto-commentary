@@ -671,11 +671,6 @@ class LatinLexicon:
         elif "key" in entry:
             metadata["headword"] = entry["key"]
 
-        # Strip trailing dictionary sense numerals (e.g., fastus1 -> fastus)
-        if "headword" in metadata:
-            import re
-            metadata["headword"] = re.sub(r"\d+$", "", metadata["headword"])
-
         # Extract genitive ending (format as "-ending")
         if "title_genitive" in entry:
             gen = entry["title_genitive"]

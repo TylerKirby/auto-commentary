@@ -181,7 +181,6 @@ class WhitakersNormalizer:
         "ego": "ego",
         "eg": "ego",
         "me": "ego",
-        "s": "sui",  # Reflexive pronoun stem
         "se": "sui",
         "su": "sui",
         "sui": "sui",
@@ -222,8 +221,6 @@ class WhitakersNormalizer:
     # Match citation parentheses like (Cic. Off. 1.2), (Verg. A. 1.1), etc.
     PARENS_CITATION_PATTERN = re.compile(r"\s*\([A-Z][a-z]*\.\s+[A-Za-z]+\.?\s*\d+[^)]*\)")
     WHITESPACE_PATTERN = re.compile(r"\s+")
-    # Pattern to strip trailing dictionary sense numerals from headwords (e.g., fastus1 -> fastus)
-    HEADWORD_NUMERAL_PATTERN = re.compile(r"^(.+?)\d+$")
 
     def __init__(self, max_senses: int = 3) -> None:
         """Initialize the normalizer.
@@ -380,9 +377,7 @@ class WhitakersNormalizer:
         decl_or_conj = category[0] if category else None
 
         # Build headword
-        # Filter out placeholder roots like '-' which appear for reflexive pronouns
-        valid_roots = [r for r in roots if r and r != "-"]
-        stem = valid_roots[0] if valid_roots else (original_word or "")
+        stem = roots[0] if roots else (original_word or "")
         headword = self._reconstruct_headword(
             stem=stem,
             word_type=wt_name,
