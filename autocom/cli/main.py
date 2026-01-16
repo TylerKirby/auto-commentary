@@ -22,6 +22,19 @@ from autocom.rendering.pdf import render_pdf
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 
+def _derive_title_from_path(path: Path) -> str:
+    """Derive a human-readable title from a file path.
+
+    Converts filename stem to title case, replacing underscores/hyphens with spaces.
+    Example: 'sample_latin_short.txt' -> 'Sample Latin Short'
+    """
+    stem = path.stem
+    # Replace underscores and hyphens with spaces
+    title = stem.replace("_", " ").replace("-", " ")
+    # Title case
+    return title.title()
+
+
 def _setup_logging(verbose: bool) -> None:
     """Configure a simple logging sink for CLI progress reporting."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -122,6 +135,7 @@ def render(
     ),
     pdf: bool = typer.Option(False, "--pdf/--no-pdf"),
     language: Optional[str] = typer.Option(None, "--language", "-l", help="Force language (latin/greek)"),
+    title: Optional[str] = typer.Option(None, "--title", help="Commentary title"),
 ) -> None:
     logger = logging.getLogger("autocom.cli.render")
     logger.info("Reading input: %s", input_path)
@@ -154,6 +168,12 @@ def render(
         lines = enr.enrich(lines)
 
     doc = layout_mod.build_document(norm, language=detected_language, lines=lines)
+
+    # Add title to document metadata (derive from filename if not provided)
+    effective_title = title if title else _derive_title_from_path(input_path)
+    logger.info("Setting document title: %s", effective_title)
+    doc.metadata["title"] = effective_title
+
     latex_src = render_latex(doc)
     logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -259,10 +279,10 @@ def commentary(
     doc.core_vocabulary = core_vocab_tokens
     doc.metadata["core_vocab_lemmas"] = core_vocab_lemmas
 
-    # Add title to document metadata if provided
-    if title:
-        logger.info("Setting document title: %s", title)
-        doc.metadata["title"] = title
+    # Add title to document metadata (derive from filename if not provided)
+    effective_title = title if title else _derive_title_from_path(input_path)
+    logger.info("Setting document title: %s", effective_title)
+    doc.metadata["title"] = effective_title
 
     latex_src = render_latex(doc)
     logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")
