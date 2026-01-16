@@ -738,13 +738,8 @@ class LatinLexicon:
     def _lookup_whitaker_normalized(self, word: str) -> Optional[NormalizedLexicalEntry]:
         """Look up word in Whitaker's and return a properly normalized entry.
 
-        This method:
-        1. Collects ALL candidate analyses from Whitaker's Words
-        2. Prefers candidates whose headword exists in Lewis & Short (vocabulary match)
-        3. Falls back to first valid entry only if no vocabulary match found
-
-        This handles homographs like 'cano' (noun: gray hairs vs verb: to sing)
-        by preferring the more common/expected meaning based on dictionary presence.
+        This method calls normalize_lexeme directly on raw Whitaker's output,
+        which performs full headword reconstruction from stems.
 
         Args:
             word: The word to look up
@@ -756,9 +751,6 @@ class LatinLexicon:
             return None
 
         query_variants = self._get_query_variants(word)
-
-        # Collect all valid candidate entries
-        candidates: List[NormalizedLexicalEntry] = []
 
         for q in query_variants:
             try:
@@ -787,89 +779,9 @@ class LatinLexicon:
                         lexeme, original_word=word
                     )
                     if entry and entry.senses:
-                        candidates.append(entry)
-
-            # Stop after first query variant that produces candidates
-            if candidates:
-                break
-
-        if not candidates:
-            return None
-
-        # Normalize word for comparison
-        word_normalized = self._normalize_headword_for_match(word)
-
-        # Strategy 1: Find candidates with Lewis & Short vocabulary match
-        # This is the most reliable indicator of a valid/common lemma
-        ls_matches = []
-        for entry in candidates:
-            headword = entry.headword or entry.lemma
-            if headword and self._get_lewis_short_entry(headword):
-                ls_matches.append(entry)
-
-        if ls_matches:
-            # Within L&S matches, check for exact headword matches
-            exact_matches = []
-            for entry in ls_matches:
-                headword = entry.headword or entry.lemma
-                if headword:
-                    headword_normalized = self._normalize_headword_for_match(headword)
-                    if headword_normalized == word_normalized:
-                        exact_matches.append(entry)
-
-            if exact_matches:
-                # If we have exact matches, prefer nouns/adjectives over verbs
-                # This handles cases like "alto" (ablative of altum) vs "alto" (verb)
-                # In poetry, nominal forms are often more contextually appropriate
-                for entry in exact_matches:
-                    pos = entry.pos
-                    if pos and hasattr(pos, "name") and pos.name in ("NOUN", "ADJECTIVE"):
                         return entry
-                # No nominal exact match, return first exact match (likely a verb like "cano")
-                return exact_matches[0]
 
-            # No exact match among candidates. Before falling back, check if the
-            # original word itself exists as a headword in L&S. This handles cases
-            # like "genus" where Whitaker's returns "genu" (knee) but L&S has "genus".
-            ls_direct = self._get_lewis_short_entry(word)
-            if ls_direct:
-                return self._lewis_short_normalizer.normalize(ls_direct, word)
-
-            # No direct L&S match - return first L&S match (for inflected forms like virum)
-            return ls_matches[0]
-
-        # Strategy 2: Prefer entries where headword matches the original word exactly
-        # This handles cases like "cano" preferring verb "cano" over noun "canus"
-        for entry in candidates:
-            headword = entry.headword or entry.lemma
-            if headword:
-                headword_normalized = self._normalize_headword_for_match(headword)
-                if headword_normalized == word_normalized:
-                    return entry
-
-        # Strategy 3: Prefer verbs for -o endings (common in Latin verse)
-        # "cano" as verb is more common than "canus" noun in poetry
-        if word_normalized.endswith("o"):
-            for entry in candidates:
-                if entry.pos and entry.pos.name == "VERB":
-                    return entry
-
-        # Strategy 4: If no candidate headword matches the original word, but
-        # the original word itself exists as a headword in L&S, use L&S directly.
-        # This handles cases like "genus" where Whitaker's returns "genu" (knee)
-        # but the user clearly meant "genus" (race/kind).
-        any_match = any(
-            self._normalize_headword_for_match(e.headword or e.lemma) == word_normalized
-            for e in candidates
-            if e.headword or e.lemma
-        )
-        if not any_match:
-            ls_entry = self._get_lewis_short_entry(word)
-            if ls_entry:
-                return self._lewis_short_normalizer.normalize(ls_entry, word)
-
-        # Fall back to first valid candidate
-        return candidates[0]
+        return None
 
     def lookup_normalized(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
         """Look up a lemma and return a NormalizedLexicalEntry.
