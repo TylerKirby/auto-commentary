@@ -14,15 +14,15 @@ from autocom.core.models import Document, Line, Page, Token
 # Paper size configurations for Steadman 1/3 layout
 # These are maximum characters for the text section (~1/3 of page)
 # For verse: ~80 chars/line × 10 lines = ~800 chars
-# For prose: tighter limits to avoid overcrowding
+# For prose: more generous limits since \sloppy handles overflow
 PAPER_CONFIGS: Dict[str, Dict[str, int]] = {
-    "letter": {"max_chars": 1800},  # 8.5x11" - tighter for better balance
-    "a4": {"max_chars": 2000},  # 8.27x11.69" - tighter
-    "a5": {"max_chars": 1200},  # 5.83x8.27" - smaller page
+    "letter": {"max_chars": 2400},  # 8.5x11" - generous for prose
+    "a4": {"max_chars": 2600},  # 8.27x11.69" - generous
+    "a5": {"max_chars": 1600},  # 5.83x8.27" - smaller page
 }
 
 # Maximum characters per line before splitting (prose paragraphs)
-MAX_LINE_CHARS = 800
+MAX_LINE_CHARS = 600
 
 
 def _split_long_line(line: Line, max_chars: int = MAX_LINE_CHARS) -> List[Line]:
@@ -107,10 +107,11 @@ def _estimate_page_usage(lines: List[Line], max_chars: int) -> float:
             if token.gloss and token.analysis and token.analysis.lemma:
                 unique_lemmas.add(token.analysis.lemma.lower())
 
-    # Each glossary entry ~60 chars, 2-column means 2 per row
+    # Each glossary entry ~50 chars average, 2-column means 2 per row
     # Glossary section is also ~1/3 of page = max_chars
-    # Use 30 chars per entry (more conservative estimate)
-    glossary_chars = len(unique_lemmas) * 30  # 60 chars / 2 columns
+    # With \sloppy and \raggedright, entries wrap better
+    # Use 20 chars per entry (less conservative with improved LaTeX)
+    glossary_chars = len(unique_lemmas) * 20
     glossary_usage = glossary_chars / max_chars
 
     # Total: text + glossary together should be <= 1.0 (meaning 2/3 of page)
@@ -149,9 +150,10 @@ def paginate(lines: List[Line], paper_size: str = "letter") -> List[Page]:
         test_chunk = chunk + [line]
         usage = _estimate_page_usage(test_chunk, max_chars)
 
-        # If page would be more than 100% used, start new page
+        # If page would be more than ~120% used, start new page
+        # Allow slight overflow since \sloppy handles wrapping well
         # But always allow at least one line per page
-        if chunk and usage > 1.0:
+        if chunk and usage > 1.2:
             pages.append(Page(lines=list(chunk), number=page_number))
             page_number += 1
             chunk = []
