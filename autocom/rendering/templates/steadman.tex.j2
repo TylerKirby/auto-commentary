@@ -58,8 +58,7 @@
 {% set line_has_content = line.text.strip() %}
 {% if line_has_content %}
 \noindent
-{% if line.number %}\textbf{{ "{{" }}{{ line.number }}{{ "}}" }} {% endif %}
-{{ line.text | latex_escape }}
+{% if line.number %}\llap{\makebox[2em][r]{\textbf{{ "{{" }}{{ line.number }}{{ "}}" }}}\hspace{0.5em}}{% endif %}{{ line.text | latex_escape }}
 \\
 {% else %}
 \vspace{0.25em}
