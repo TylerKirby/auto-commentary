@@ -15,6 +15,58 @@ if TYPE_CHECKING:
     from autocom.core.lexical import NormalizedLexicalEntry
 
 
+def _extract_infinitive_ending(headword: Optional[str], infinitive: str) -> Optional[str]:  # noqa: ARG001
+    """Extract the infinitive ending for Steadman-style verb display.
+
+    Returns the characteristic infinitive ending based on conjugation pattern.
+    Latin active infinitives follow these patterns:
+    - 1st conjugation: -āre (e.g., amāre)
+    - 2nd conjugation: -ēre (e.g., monēre)
+    - 3rd conjugation: -ere (e.g., dūcere, capere)
+    - 4th conjugation: -īre (e.g., audīre)
+
+    Examples:
+        _extract_infinitive_ending("amō", "amāre") -> "-āre"
+        _extract_infinitive_ending("veniō", "venīre") -> "-īre"
+        _extract_infinitive_ending("dūcō", "dūcere") -> "-ere"
+
+    Args:
+        headword: The present first person singular (e.g., "amō") - used for context
+        infinitive: The present active infinitive (e.g., "amāre")
+
+    Returns:
+        The infinitive ending with hyphen prefix (e.g., "-āre"), or None if extraction fails
+    """
+    if not infinitive:
+        return None
+
+    # Standard Latin active infinitive endings (with and without macrons)
+    # Check for long vowel forms first, then short
+    endings = [
+        ("āre", "-āre"),  # 1st conjugation
+        ("ēre", "-ēre"),  # 2nd conjugation
+        ("īre", "-īre"),  # 4th conjugation
+        ("are", "-are"),  # 1st without macron
+        ("ire", "-ire"),  # 4th without macron (or 3rd -io)
+        ("ere", "-ere"),  # 2nd/3rd without macron
+    ]
+
+    for suffix, result in endings:
+        if infinitive.endswith(suffix):
+            return result
+
+    # Fallback for deponent/passive infinitives ending in -ī
+    if infinitive.endswith("ī") or infinitive.endswith("i"):
+        # Deponent infinitive (e.g., sequī)
+        return "-" + infinitive[-1]
+
+    # Last resort: if it ends in 're', extract the vowel + re
+    if infinitive.endswith("re") and len(infinitive) >= 3:
+        return "-" + infinitive[-3:]
+
+    return None
+
+
 class PipelineConfig(BaseModel):
     """Configuration for the deterministic pipeline."""
 
@@ -117,8 +169,9 @@ class Gloss(BaseModel):
         # Get gender abbreviation
         gender_abbrev = gender_abbrev_map.get(entry.gender) if entry.gender else None
 
-        # Format principal parts as string
+        # Format principal parts as string and extract verb infinitive ending
         principal_parts_str = None
+        verb_infinitive_ending = None
         if entry.latin_principal_parts:
             pp = entry.latin_principal_parts
             parts = []
@@ -130,18 +183,29 @@ class Gloss(BaseModel):
                 principal_parts_str = ", ".join(parts)
                 if entry.conjugation:
                     principal_parts_str += f" ({entry.conjugation})"
+            # Extract infinitive ending for Steadman-style display (e.g., -āre, -ēre, -ere, -īre)
+            if pp.infinitive:
+                verb_infinitive_ending = _extract_infinitive_ending(entry.headword, pp.infinitive)
         elif entry.greek_principal_parts:
             # For Greek, format the tense stems
             gpp = entry.greek_principal_parts
-            parts = [p for p in [gpp.future, gpp.aorist, gpp.perfect_active, gpp.perfect_middle, gpp.aorist_passive] if p]
+            parts = [
+                p for p in [gpp.future, gpp.aorist, gpp.perfect_active, gpp.perfect_middle, gpp.aorist_passive] if p
+            ]
             if parts:
                 principal_parts_str = ", ".join(parts)
+
+        # For verbs, use infinitive ending as "genitive" to display after headword (Steadman style)
+        # e.g., "vocō, -āre" instead of just "vocō"
+        display_ending = entry.genitive
+        if entry.pos == PartOfSpeech.VERB and verb_infinitive_ending:
+            display_ending = verb_infinitive_ending
 
         return cls(
             lemma=entry.lemma,
             senses=entry.senses,
             headword=entry.headword,
-            genitive=entry.genitive,
+            genitive=display_ending,
             gender=gender_abbrev,
             pos_abbrev=pos_abbrev,
             principal_parts=principal_parts_str,
