@@ -376,9 +376,8 @@ class WhitakersNormalizer:
         if gender_code and wt_name in ("N", "ADJ", "PRON"):
             gender = self.GENDER_MAP.get(gender_code)
 
-        # Extract declension/conjugation and variant
+        # Extract declension/conjugation
         decl_or_conj = category[0] if category else None
-        variant = category[1] if len(category) > 1 else None
 
         # Build headword
         # Filter out placeholder roots like '-' which appear for reflexive pronouns
@@ -390,7 +389,6 @@ class WhitakersNormalizer:
             declension=decl_or_conj,
             gender_code=gender_code,
             roots=roots,
-            variant=variant,
         )
 
         # Normalize lemma
@@ -454,19 +452,10 @@ class WhitakersNormalizer:
         declension: Optional[int],
         gender_code: Optional[str],
         roots: List[str],
-        variant: Optional[int] = None,
     ) -> str:
         """Reconstruct full headword from stem and grammatical info.
 
         This is the core function that fixes the truncated headword bug.
-
-        Args:
-            stem: Word stem
-            word_type: Whitaker's word type code (N, V, ADJ, etc.)
-            declension: Declension/conjugation number
-            gender_code: Gender code (M, F, N, C)
-            roots: List of stems from Whitaker's
-            variant: Whitaker's variant code (category[1])
         """
         if not stem:
             return ""
@@ -489,9 +478,9 @@ class WhitakersNormalizer:
                     return value
             return stem  # Fallback to stem
 
-        # Nouns: use declension + gender + variant mapping
+        # Nouns: use declension + gender mapping
         if word_type == "N":
-            return self._reconstruct_noun_headword(stem, declension, gender_code, variant)
+            return self._reconstruct_noun_headword(stem, declension, gender_code)
 
         # Adjectives: use declension mapping
         if word_type == "ADJ":
@@ -505,28 +494,14 @@ class WhitakersNormalizer:
         stem: str,
         declension: Optional[int],
         gender_code: Optional[str],
-        variant: Optional[int] = None,
     ) -> str:
-        """Reconstruct noun nominative singular from stem.
-
-        Args:
-            stem: The noun stem
-            declension: Declension number (1-5)
-            gender_code: Gender code (M, F, N, C)
-            variant: Whitaker's variant code (e.g., 3 for vir/puer type 2nd decl)
-        """
+        """Reconstruct noun nominative singular from stem."""
         if not declension:
             return stem
 
         # Third declension is complex - needs special handling
         if declension == 3:
             return self._reconstruct_third_decl_noun(stem, gender_code)
-
-        # Second declension variant 3: -er/-ir nouns (vir, puer, ager)
-        # These nouns have nominative = stem (no ending added)
-        if declension == 2 and variant == 3:
-            # Stems already represent nominative for -er/-ir nouns
-            return stem
 
         # Other declensions: use ending map
         key = (declension, gender_code or "M")
