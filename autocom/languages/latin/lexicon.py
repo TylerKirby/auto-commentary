@@ -828,7 +828,14 @@ class LatinLexicon:
                 # No nominal exact match, return first exact match (likely a verb like "cano")
                 return exact_matches[0]
 
-            # No exact match - return first L&S match (for inflected forms like virum)
+            # No exact match among candidates. Before falling back, check if the
+            # original word itself exists as a headword in L&S. This handles cases
+            # like "genus" where Whitaker's returns "genu" (knee) but L&S has "genus".
+            ls_direct = self._get_lewis_short_entry(word)
+            if ls_direct:
+                return self._lewis_short_normalizer.normalize(ls_direct, word)
+
+            # No direct L&S match - return first L&S match (for inflected forms like virum)
             return ls_matches[0]
 
         # Strategy 2: Prefer entries where headword matches the original word exactly
@@ -846,6 +853,20 @@ class LatinLexicon:
             for entry in candidates:
                 if entry.pos and entry.pos.name == "VERB":
                     return entry
+
+        # Strategy 4: If no candidate headword matches the original word, but
+        # the original word itself exists as a headword in L&S, use L&S directly.
+        # This handles cases like "genus" where Whitaker's returns "genu" (knee)
+        # but the user clearly meant "genus" (race/kind).
+        any_match = any(
+            self._normalize_headword_for_match(e.headword or e.lemma) == word_normalized
+            for e in candidates
+            if e.headword or e.lemma
+        )
+        if not any_match:
+            ls_entry = self._get_lewis_short_entry(word)
+            if ls_entry:
+                return self._lewis_short_normalizer.normalize(ls_entry, word)
 
         # Fall back to first valid candidate
         return candidates[0]
