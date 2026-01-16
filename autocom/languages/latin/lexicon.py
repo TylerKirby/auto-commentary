@@ -1117,12 +1117,18 @@ class LatinLexicon:
             self._cache.set(word, "whitakers", result, use_ttl=False)
         return result
 
-    def enrich_token(self, token: Token, frequency: Optional[int] = None) -> Token:
+    def enrich_token(
+        self,
+        token: Token,
+        frequency: Optional[int] = None,
+        first_occurrence_line: Optional[int] = None,
+    ) -> Token:
         """Enrich a token with dictionary information using the normalization layer.
 
         Args:
             token: The token to enrich
             frequency: Optional occurrence count for this lemma in the text
+            first_occurrence_line: Optional line number where this lemma first appears
 
         Uses lookup_normalized() for primary lookups, falling back to API
         lookups when offline dictionaries don't have the entry.
@@ -1156,39 +1162,56 @@ class LatinLexicon:
 
         # Build Gloss from normalized entry or fallback
         if entry:
-            token.gloss = Gloss.from_normalized_entry(entry, frequency=frequency)
+            token.gloss = Gloss.from_normalized_entry(
+                entry, frequency=frequency, first_occurrence_line=first_occurrence_line
+            )
         elif api_senses:
             # API results don't have full metadata, create minimal Gloss
-            token.gloss = Gloss(lemma=lemma, senses=api_senses, frequency=frequency)
+            token.gloss = Gloss(
+                lemma=lemma, senses=api_senses, frequency=frequency, first_occurrence_line=first_occurrence_line
+            )
         else:
             # No definition found
-            token.gloss = Gloss(lemma=lemma, senses=[], frequency=frequency)
+            token.gloss = Gloss(lemma=lemma, senses=[], frequency=frequency, first_occurrence_line=first_occurrence_line)
 
         return token
 
-    def enrich_line(self, line: Line, frequency_map: Optional[Dict[str, int]] = None) -> Line:
+    def enrich_line(
+        self,
+        line: Line,
+        frequency_map: Optional[Dict[str, int]] = None,
+        first_occurrence_line_map: Optional[Dict[str, int]] = None,
+    ) -> Line:
         """Enrich a line with dictionary information.
 
         Args:
             line: The line to enrich
             frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
+            first_occurrence_line_map: Optional dict mapping lowercase lemmas to first occurrence line numbers
         """
         for token in line.tokens:
             if token.is_punct:
                 continue
             lemma = token.analysis.lemma if token.analysis else token.text
             freq = frequency_map.get(lemma.lower()) if frequency_map else None
-            self.enrich_token(token, frequency=freq)
+            first_line = first_occurrence_line_map.get(lemma.lower()) if first_occurrence_line_map else None
+            self.enrich_token(token, frequency=freq, first_occurrence_line=first_line)
         return line
 
-    def enrich(self, lines: Iterable[Line], frequency_map: Optional[Dict[str, int]] = None) -> List[Line]:
+    def enrich(
+        self,
+        lines: Iterable[Line],
+        frequency_map: Optional[Dict[str, int]] = None,
+        first_occurrence_line_map: Optional[Dict[str, int]] = None,
+    ) -> List[Line]:
         """Enrich lines with dictionary information.
 
         Args:
             lines: Lines to enrich
             frequency_map: Optional dict mapping lowercase lemmas to occurrence counts
+            first_occurrence_line_map: Optional dict mapping lowercase lemmas to first occurrence line numbers
         """
-        return [self.enrich_line(line, frequency_map) for line in lines]
+        return [self.enrich_line(line, frequency_map, first_occurrence_line_map) for line in lines]
 
     def get_cache_stats(self) -> Optional[Dict[str, Any]]:
         """Get dictionary cache statistics.
