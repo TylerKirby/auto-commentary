@@ -5,33 +5,12 @@ LaTeX rendering for Steadman-style layout using Jinja2 templates.
 from __future__ import annotations
 
 import re
-import unicodedata
 from pathlib import Path
 from typing import List, Optional, Set
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from autocom.core.models import Document, Line, Token
-
-
-def _normalize_for_dedup(text: str) -> str:
-    """
-    Normalize text for deduplication, stripping Greek diacritical marks.
-
-    Greek words like τίς, τὶς, and τις should be treated as the same lemma.
-    This function normalizes to NFD form and removes combining characters
-    (accents, breathing marks, etc.) to create a canonical form for comparison.
-
-    Args:
-        text: The text to normalize (typically a lemma)
-
-    Returns:
-        Normalized lowercase text with diacriticals removed
-    """
-    # Normalize to NFD to decompose characters (e.g., ά → α + combining acute)
-    nfd = unicodedata.normalize("NFD", text.lower())
-    # Remove combining characters (accents, breathing marks, etc.)
-    return "".join(c for c in nfd if not unicodedata.combining(c))
 
 
 def _sorted_glossary_tokens_with_exclusions(
@@ -53,8 +32,7 @@ def _sorted_glossary_tokens_with_exclusions(
     Returns:
         List of unique tokens with definitions, sorted alphabetically, limited to max_entries
     """
-    # Normalize exclusion lemmas for consistent comparison (handles Greek accents)
-    normalized_exclude = {_normalize_for_dedup(lemma) for lemma in (exclude_lemmas or set())}
+    exclude_lemmas = exclude_lemmas or set()
     seen_lemmas: Set[str] = set()
     tokens: List[Token] = []
     for line in lines:
@@ -66,19 +44,18 @@ def _sorted_glossary_tokens_with_exclusions(
             if re.match(r"^[IVXLCDM]+$", token.text, re.IGNORECASE):
                 continue
             if token.gloss and token.analysis and token.analysis.lemma:
-                # Normalize lemma for deduplication (handles Greek accent variants)
-                lemma_normalized = _normalize_for_dedup(token.analysis.lemma)
+                lemma_lower = token.analysis.lemma.lower()
                 # Skip if in exclusion set (core vocabulary)
-                if lemma_normalized in normalized_exclude:
+                if lemma_lower in exclude_lemmas:
                     continue
                 # Skip tokens without definitions
                 if not token.gloss.best:
                     continue
-                if lemma_normalized not in seen_lemmas:
-                    seen_lemmas.add(lemma_normalized)
+                if lemma_lower not in seen_lemmas:
+                    seen_lemmas.add(lemma_lower)
                     tokens.append(token)
-    # Sort alphabetically by headword or lemma (normalized for proper Greek ordering)
-    tokens.sort(key=lambda t: _normalize_for_dedup(t.gloss.headword or t.analysis.lemma or ""))
+    # Sort alphabetically by headword or lemma
+    tokens.sort(key=lambda t: (t.gloss.headword or t.analysis.lemma or "").lower())
     # Limit to max_entries to prevent overflow
     return tokens[:max_entries]
 
@@ -113,9 +90,9 @@ def collect_missing_definitions(document: Document) -> List[dict]:
         for token in document.core_vocabulary:
             if token.gloss and not token.gloss.best:
                 lemma = token.analysis.lemma if token.analysis else token.text
-                lemma_normalized = _normalize_for_dedup(lemma)
-                if lemma_normalized not in seen_lemmas:
-                    seen_lemmas.add(lemma_normalized)
+                lemma_lower = lemma.lower()
+                if lemma_lower not in seen_lemmas:
+                    seen_lemmas.add(lemma_lower)
                     missing.append({
                         "word": token.text,
                         "lemma": lemma,
@@ -137,9 +114,9 @@ def collect_missing_definitions(document: Document) -> List[dict]:
                 # Check if token has gloss but no definition
                 if token.gloss and not token.gloss.best:
                     lemma = token.analysis.lemma if token.analysis else token.text
-                    lemma_normalized = _normalize_for_dedup(lemma)
-                    if lemma_normalized not in seen_lemmas:
-                        seen_lemmas.add(lemma_normalized)
+                    lemma_lower = lemma.lower()
+                    if lemma_lower not in seen_lemmas:
+                        seen_lemmas.add(lemma_lower)
                         missing.append({
                             "word": token.text,
                             "lemma": lemma,
@@ -148,8 +125,8 @@ def collect_missing_definitions(document: Document) -> List[dict]:
                             "context": line.text[:50] + "..." if len(line.text) > 50 else line.text,
                         })
 
-    # Sort by lemma for easier review (normalized for proper Greek ordering)
-    missing.sort(key=lambda x: _normalize_for_dedup(x["lemma"]))
+    # Sort by lemma for easier review
+    missing.sort(key=lambda x: x["lemma"].lower())
     return missing
 
 
