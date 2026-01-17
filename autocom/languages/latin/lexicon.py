@@ -162,6 +162,26 @@ class LatinLexicon:
         no_digits = re.sub(r"\d+$", "", mapped)
         return unicodedata.normalize("NFC", no_digits)
 
+    @staticmethod
+    def _entry_completeness_score(entry: "NormalizedLexicalEntry") -> int:
+        """Score an entry by morphological completeness.
+
+        Higher scores indicate more complete morphological information.
+        Used to prefer entries with declension/genitive/gender over incomplete ones.
+        """
+        score = 0
+        if entry.declension is not None:
+            score += 3  # Declension is most important for genitive
+        if entry.genitive:
+            score += 2
+        if entry.gender is not None:
+            score += 1
+        if entry.conjugation is not None:
+            score += 2  # For verbs
+        if entry.latin_principal_parts is not None:
+            score += 1
+        return score
+
     def _load_lewis_short_letter(self, letter: str) -> Dict[str, Any]:
         key = (letter or "").strip().upper()[:1]
         if not key or not key.isalpha():
@@ -818,6 +838,10 @@ class LatinLexicon:
                         exact_matches.append(entry)
 
             if exact_matches:
+                # Sort by morphological completeness (declension, genitive, gender)
+                # This ensures we prefer "deus, -ī m." over "deus" with no info
+                exact_matches.sort(key=self._entry_completeness_score, reverse=True)
+
                 # If we have exact matches, prefer nouns/adjectives over verbs
                 # This handles cases like "alto" (ablative of altum) vs "alto" (verb)
                 # In poetry, nominal forms are often more contextually appropriate
