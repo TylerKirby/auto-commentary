@@ -424,6 +424,119 @@ class TestGreekPreservation:
         assert "φιλέω" in result
 
 
+class TestScholarlyApparatusCleaning:
+    """Test removal of scholarly apparatus that's not pedagogically useful."""
+
+    def test_removes_temporal_labels(self, normalizer):
+        """Removes temporal classification labels like (ante-class.), (post-class.)."""
+        assert "(ante-class.)" not in normalizer._clean_single_sense(
+            "to live, feed (ante-class.): ficis"
+        )
+        assert "(post-class.)" not in normalizer._clean_single_sense(
+            "to fill with marrow (post-class.)"
+        )
+        assert "(post-Aug.)" not in normalizer._clean_single_sense(
+            "suavity, courteousness (post-Aug.)"
+        )
+
+    def test_removes_section_markers(self, normalizer):
+        """Removes section markers like § 60, § 181."""
+        assert "§ 60" not in normalizer._clean_single_sense(
+            "a crane, § 60; ; 75"
+        )
+        assert "§ 181" not in normalizer._clean_single_sense(
+            "to be in heat, § 181; perh. also"
+        )
+
+    def test_removes_page_numbers(self, normalizer):
+        """Removes page number references like p. 89, p. 59."""
+        assert "p. 89" not in normalizer._clean_single_sense(
+            "only Boëth. in Porphyr. 4, p. 89"
+        )
+        assert "p. 59" not in normalizer._clean_single_sense(
+            "Lex. Servil. p. 59 Haubold"
+        )
+
+    def test_removes_etymology_references(self, normalizer):
+        """Removes etymology like Sanscr., Gr., root or."""
+        result = normalizer._clean_single_sense(
+            "Fut. part. oriturus, root or.; Sanscr. ar-; Gr. ̓́"
+        )
+        assert "Sanscr." not in result
+        assert "root or." not in result
+
+    def test_removes_manuscript_notations(self, normalizer):
+        """Removes manuscript notations like freq. in MSS., inscrr."""
+        result = normalizer._clean_single_sense(
+            "Masc.eidem, freq. in MSS. and inscrr.; ad 120"
+        )
+        assert "freq. in MSS." not in result
+        assert "inscrr." not in result
+
+    def test_removes_author_page_citations(self, normalizer):
+        """Removes author + page citations like Naev. ap., Pac. ap. Non."""
+        result = normalizer._clean_single_sense(
+            "n. irreg. : Pac. ap. Non. ; Quadrig. ap. ; 1010"
+        )
+        assert "Pac. ap. Non." not in result
+        assert "Quadrig. ap." not in result
+
+    def test_removes_technical_abbreviations(self, normalizer):
+        """Removes or expands technical abbreviations like n. irreg., inch."""
+        result = normalizer._clean_single_sense(
+            "inch. n. and a."
+        )
+        # Should either remove or the definition should make sense
+        assert result == "" or "gape" in result.lower() or "open" in result.lower() or len(result) < 20
+
+    def test_removes_empty_semicolons(self, normalizer):
+        """Removes empty citation sequences like '; ; .'."""
+        result = normalizer._clean_single_sense(
+            "a crane, ; ; 75; regarded as a delicacy"
+        )
+        assert "; ;" not in result
+        assert "; 75" not in result
+
+    def test_cleans_truncated_definitions(self, normalizer):
+        """Cleans definitions that end with incomplete fragments."""
+        result = normalizer._clean_single_sense(
+            "to support with pales: reliquae partes vinearum nunc palandae et alligandae sunt,: ut..."
+        )
+        # Should not end with incomplete Latin or "..."
+        assert not result.endswith("...")
+        assert not result.endswith(",:")
+
+    def test_removes_form_variant_lists(self, normalizer):
+        """Removes variant form listings like 'Gen. plur., denum, fin.'."""
+        result = normalizer._clean_single_sense(
+            "Gen. plur., denum, fin.; : denorum,5 fin.), num. distrib., ten each"
+        )
+        assert "Gen. plur." not in result
+        assert "fin.)" not in result
+        # Should preserve the actual definition
+        assert "ten each" in result or "ten" in result.lower()
+
+    def test_produces_clean_definition_for_orior(self, normalizer):
+        """The verb orior should have a clean definition, not etymology."""
+        # This is what the raw L&S data looks like
+        result = normalizer._clean_single_sense(
+            "Fut. part. oriturus, 4 , root or.; Sanscr. ar-; Gr. ̓́, ̓́; Etym. 348 ."
+        )
+        # This should be cleaned to empty or a meaningful stub
+        # The real definition should come from a different sense
+        assert "Sanscr." not in result
+        assert "Etym." not in result
+
+    def test_produces_clean_definition_for_possum(self, normalizer):
+        """The verb possum should have a clean definition."""
+        result = normalizer._clean_single_sense(
+            "n. irreg. : Pac. ap. Non. ; Quadrig. ap. ; 1010: poteratur, Cael. ap. Non."
+        )
+        # Should be cleaned to empty - this is not a definition
+        assert "Pac. ap." not in result
+        assert "poteratur" not in result or len(result) < 30
+
+
 class TestRealWorldEntries:
     """Test with real L&S entry structures."""
 

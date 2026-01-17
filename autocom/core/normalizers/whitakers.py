@@ -222,6 +222,11 @@ class WhitakersNormalizer:
     # Match citation parentheses like (Cic. Off. 1.2), (Verg. A. 1.1), etc.
     PARENS_CITATION_PATTERN = re.compile(r"\s*\([A-Z][a-z]*\.\s+[A-Za-z]+\.?\s*\d+[^)]*\)")
     WHITESPACE_PATTERN = re.compile(r"\s+")
+    # Whitaker's internal notation to remove
+    # (by GENDER/NUMBER), (w/XXXX), etc.
+    WHITAKERS_NOTATION_PATTERN = re.compile(r"\s*\((?:by\s+)?(?:GENDER|NUMBER|w/[^)]+)[^)]*\)")
+    # DEMONST:, INTERR:, etc. prefixes
+    POS_PREFIX_PATTERN = re.compile(r"^(?:DEMONST|INTERR|INDEF|REFLEX|REL|PERS):\s*")
     # Pattern to strip trailing dictionary sense numerals from headwords (e.g., fastus1 -> fastus)
     HEADWORD_NUMERAL_PATTERN = re.compile(r"^(.+?)\d+$")
 
@@ -725,6 +730,8 @@ class WhitakersNormalizer:
         Removes:
         - Editorial brackets: [word => meaning]
         - Citation parentheses: (Cic. Off. 1.2)
+        - Whitaker's internal notation: (by GENDER/NUMBER), (w/-dem ONLY...)
+        - POS prefixes: DEMONST:, INTERR:, etc.
         - Excessive whitespace
         - Trailing punctuation
         """
@@ -736,6 +743,12 @@ class WhitakersNormalizer:
 
         # Remove citation parentheses
         cleaned = self.PARENS_CITATION_PATTERN.sub("", cleaned)
+
+        # Remove Whitaker's internal notation like (by GENDER/NUMBER), (w/-dem ONLY...)
+        cleaned = self.WHITAKERS_NOTATION_PATTERN.sub("", cleaned)
+
+        # Remove POS prefixes like DEMONST:, INTERR:
+        cleaned = self.POS_PREFIX_PATTERN.sub("", cleaned)
 
         # Normalize whitespace
         cleaned = self.WHITESPACE_PATTERN.sub(" ", cleaned)

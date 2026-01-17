@@ -210,6 +210,10 @@ def commentary(
     pdf: bool = typer.Option(False, "--pdf/--no-pdf"),
     language: Optional[str] = typer.Option(None, "--language", "-l", help="Force language (latin/greek)"),
     title: Optional[str] = typer.Option(None, "--title", help="Commentary title"),
+    author: Optional[str] = typer.Option(None, "--author", help="Original text author (e.g., 'Homer')"),
+    passage_range: Optional[str] = typer.Option(
+        None, "--passage", help="Passage range (e.g., 'Iliad Book 1, Lines 1-100')"
+    ),
     paper_size: str = typer.Option(
         "letter",
         "--paper-size",
@@ -291,6 +295,12 @@ def commentary(
     effective_title = title if title else _derive_title_from_path(input_path)
     logger.info("Setting document title: %s", effective_title)
     doc.metadata["title"] = effective_title
+
+    # Add optional author and passage metadata for title page
+    if author:
+        doc.metadata["author"] = author
+    if passage_range:
+        doc.metadata["passage_range"] = passage_range
 
     latex_src = render_latex(doc)
     logger.info("Writing LaTeX output to %s", output_dir / "commentary.tex")

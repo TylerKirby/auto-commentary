@@ -36,7 +36,7 @@ def _normalize_for_dedup(text: str) -> str:
 
 def _sorted_glossary_tokens_with_exclusions(
     lines: List[Line],
-    max_entries: int = 40,
+    max_entries: int = 20,
     exclude_lemmas: Optional[Set[str]] = None,
 ) -> List[Token]:
     """
@@ -47,7 +47,7 @@ def _sorted_glossary_tokens_with_exclusions(
 
     Args:
         lines: Lines containing tokens
-        max_entries: Maximum glossary entries per page (default 40 fits ~1/3 page)
+        max_entries: Maximum glossary entries per page (default 20 to prevent overflow)
         exclude_lemmas: Set of lemma strings (lowercase) to exclude (e.g., core vocabulary)
 
     Returns:
@@ -175,6 +175,32 @@ def _latex_escape(value: str) -> str:
     return "".join(escaped)
 
 
+def _truncate_definition(value: str, max_length: int = 80) -> str:
+    """Truncate a definition to prevent column overflow.
+
+    Definitions over max_length characters are truncated at a word boundary
+    with an ellipsis. This prevents very long L&S definitions from breaking
+    the two-column glossary layout.
+
+    Args:
+        value: The definition text
+        max_length: Maximum characters before truncation (default 120)
+
+    Returns:
+        Truncated definition with ellipsis if needed
+    """
+    if value is None:
+        return ""
+    value = str(value)
+    if len(value) <= max_length:
+        return value
+    # Truncate at word boundary
+    truncated = value[:max_length].rsplit(" ", 1)[0]
+    # Avoid ending with punctuation before ellipsis
+    truncated = truncated.rstrip(".,;:")
+    return truncated + "..."
+
+
 def _env(template_dir: Optional[str] = None, exclude_lemmas: Optional[Set[str]] = None) -> Environment:
     dir_path = Path(template_dir) if template_dir else Path(__file__).parent / "templates"
     env = Environment(
@@ -182,6 +208,7 @@ def _env(template_dir: Optional[str] = None, exclude_lemmas: Optional[Set[str]] 
         autoescape=select_autoescape([]),
     )
     env.filters["latex_escape"] = _latex_escape
+    env.filters["truncate_def"] = _truncate_definition
     # Create glossary filter with exclusion set for core vocabulary
     env.filters["sorted_glossary"] = _make_sorted_glossary_filter(exclude_lemmas)
     return env

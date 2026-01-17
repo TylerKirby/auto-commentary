@@ -107,6 +107,56 @@ LATIN_EXAMPLE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Temporal period labels (not pedagogically useful)
+TEMPORAL_LABEL_PATTERN = re.compile(
+    r"\s*\((?:ante-class\.|post-class\.|post-Aug\.|late|early|class\.|"
+    r"very rare|rare|eccl\.|mediev\.)[^)]*\)\s*",
+    re.IGNORECASE
+)
+
+# Section and page markers
+SECTION_MARKER_PATTERN = re.compile(r"\s*§\s*\d+\s*")
+PAGE_NUMBER_PATTERN = re.compile(r"\s*,?\s*p\.\s*\d+\s*")
+
+# Etymology references (Sanskrit, Greek roots, etc.)
+ETYMOLOGY_PATTERN = re.compile(
+    r"\s*(?:root\s+\w+\.?;?\s*|Sanscr\.\s*\w*[-;]?\s*|Gr\.\s*[^;,]+[;,]?\s*|"
+    r"Etym\.\s*\d*\s*\.?\s*)",
+    re.IGNORECASE
+)
+
+# Manuscript and inscription notations
+MS_NOTATION_PATTERN = re.compile(
+    r"\s*(?:freq\.\s+in\s+MSS\.?\s*(?:and\s+)?|inscrr\.?\s*;?\s*|"
+    r"ad\s+\d+\s*)",
+    re.IGNORECASE
+)
+
+# Author citation patterns (Pac. ap. Non., etc.)
+AUTHOR_AP_PATTERN = re.compile(
+    r"\s*(?:[A-Z][a-z]+\.?\s+ap\.\s*(?:[A-Z][a-z]+\.?\s*)?;?\s*|"
+    r":\s*\d{3,4}:?\s*)",
+)
+
+# Grammatical form variant lists (Gen. plur., Dat. sing., etc.)
+FORM_VARIANT_PATTERN = re.compile(
+    r"^\s*(?:Gen\.|Dat\.|Acc\.|Abl\.|Nom\.|Voc\.)\s+(?:plur\.|sing\.)[^,]*,\s*"
+    r"(?:\w+,?\s*(?:fin\.)?\s*;?\s*:?\s*)+",
+    re.IGNORECASE
+)
+
+# Future participle and morphological notes
+MORPHOLOGY_NOTES_PATTERN = re.compile(
+    r"^\s*(?:Fut\.\s+part\.\s+\w+,?\s*(?:\d+\s*,?\s*)?)",
+    re.IGNORECASE
+)
+
+# Irregular verb notation at the start
+IRREG_NOTATION_PATTERN = re.compile(
+    r"^\s*n\.\s+irreg\.\s*:?\s*",
+    re.IGNORECASE
+)
+
 
 class LewisShortNormalizer:
     """Normalizes Lewis & Short dictionary entries to canonical form.
@@ -410,6 +460,33 @@ class LewisShortNormalizer:
 
         result = sense
 
+        # Remove temporal labels like (ante-class.), (post-Aug.)
+        result = TEMPORAL_LABEL_PATTERN.sub(" ", result)
+
+        # Remove section markers like § 60
+        result = SECTION_MARKER_PATTERN.sub(" ", result)
+
+        # Remove page numbers like p. 89
+        result = PAGE_NUMBER_PATTERN.sub(" ", result)
+
+        # Remove etymology references like Sanscr., root or.
+        result = ETYMOLOGY_PATTERN.sub(" ", result)
+
+        # Remove manuscript notations like freq. in MSS.
+        result = MS_NOTATION_PATTERN.sub(" ", result)
+
+        # Remove author ap. citations like Pac. ap. Non.
+        result = AUTHOR_AP_PATTERN.sub(" ", result)
+
+        # Remove grammatical form variant lists at start
+        result = FORM_VARIANT_PATTERN.sub("", result)
+
+        # Remove morphological notes at start
+        result = MORPHOLOGY_NOTES_PATTERN.sub("", result)
+
+        # Remove irregular verb notation at start
+        result = IRREG_NOTATION_PATTERN.sub("", result)
+
         # Remove citations (Cic., Verg., etc.)
         result = CITATION_PATTERN.sub("", result)
 
@@ -441,6 +518,12 @@ class LewisShortNormalizer:
             if colon_match and colon_match.start() > 15:  # Keep at least 15 chars of definition
                 result = result[: colon_match.start()]
 
+        # Remove empty semicolon sequences like "; ;" or "; ; ;"
+        result = re.sub(r"(?:;\s*)+;", ";", result)
+
+        # Remove bare numbers left over from citations (e.g., "75")
+        result = re.sub(r";\s*\d+\s*(?=;|$)", "", result)
+
         # Clean up punctuation artifacts
         result = re.sub(r"\s*[;:,]\s*$", "", result)  # Trailing punctuation
         result = re.sub(r"^\s*[;:,]\s*", "", result)  # Leading punctuation
@@ -450,6 +533,12 @@ class LewisShortNormalizer:
         result = re.sub(r"^\s*[a-z]\)\s*", "", result)
         result = re.sub(r"^\s*\d+\)\s*", "", result)
         result = re.sub(r"^\s*[IVX]+\.\s*", "", result)
+
+        # Remove trailing ellipses from truncated definitions
+        result = re.sub(r"\.\.\.$", "", result)
+
+        # Remove trailing ": ut..." patterns (truncated examples)
+        result = re.sub(r":\s*ut\.\.\.$", "", result)
 
         # Extract first meaningful clause if still too long
         if len(result) > 200:
