@@ -169,6 +169,13 @@ class EnhancedLatinLemmatizer:
     def _validate_lemma(self, word: str, lemma: str) -> str:
         """Validate lemma using morphological and phonological rules."""
 
+        # Check for abstract noun/adjective errors first (most common error)
+        # e.g., diversitate → diversito (should be diversitas)
+        if self._looks_like_abstract_noun_error(word, lemma):
+            corrected = self._fix_abstract_noun_error(word, lemma)
+            if corrected:
+                return corrected
+
         # Check for enclitic handling errors
         for enclitic in self._enclitics:
             if word.lower().endswith(enclitic):
@@ -209,6 +216,136 @@ class EnhancedLatinLemmatizer:
             return True
 
         return False
+
+    def _looks_like_abstract_noun_error(self, word: str, lemma: str) -> bool:
+        """Detect when a -tas/-tis noun or -bilis adjective was wrongly lemmatized as a verb.
+
+        SpaCy/CLTK sometimes lemmatizes abstract nouns ending in -tas/-tate/-tatis
+        as -io/-ito verbs, and -bilis adjectives as -o/-ilo verbs. This is incorrect.
+
+        Examples of errors:
+        - diversitate → diversito (should be diversitas)
+        - adclivitas → adclivio (should be adclivitas/acclivitas)
+        - adulabili → adulabilo (should be adulabilis)
+        - cruciabili → cruciabilo (should be cruciabilis)
+        - efficaciae → efficacio (should be efficacia)
+
+        Args:
+            word: The original surface form
+            lemma: The lemma produced by the lemmatizer
+
+        Returns:
+            True if this looks like an abstract noun/adjective wrongly lemmatized as a verb
+        """
+        word_lower = word.lower()
+        lemma_lower = lemma.lower()
+
+        # Skip if lemma doesn't end in -o/-io (verb-like ending)
+        if not lemma_lower.endswith("o"):
+            return False
+
+        # Pattern 1: -tas noun forms → -io/-ito verb error
+        # Surface forms: -tas, -tate, -tati, -tatem, -tatis, -tatum, -tatibus, etc.
+        tas_forms = ("tas", "tate", "tati", "tatem", "tatis", "tatum", "tatibus", "tates", "tatium")
+        for form in tas_forms:
+            if word_lower.endswith(form):
+                # The lemma should end in -tas, not -io/-ito
+                if lemma_lower.endswith(("io", "ito")):
+                    return True
+
+        # Pattern 2: -bilis adjective forms → -o/-ilo verb error
+        # Surface forms: -bilis, -bili, -bilem, -biles, -bilium, -bilibus, etc.
+        bilis_forms = ("bilis", "bili", "bilem", "biles", "bilium", "bilibus", "bile")
+        for form in bilis_forms:
+            if word_lower.endswith(form):
+                # The lemma should end in -bilis, not -o/-ilo
+                if lemma_lower.endswith(("o", "ilo")):
+                    return True
+
+        # Pattern 3: -ia noun forms → -io verb error
+        # Surface forms: -ia, -iae, -iam, -iarum, etc.
+        ia_forms = ("iae", "iam", "iarum", "iis")
+        for form in ia_forms:
+            if word_lower.endswith(form):
+                # Check if the stem matches and lemma ends in -io
+                if lemma_lower.endswith("io"):
+                    # Make sure it's not a legitimate -io verb
+                    # If the word stem (before -iae) matches lemma stem (before -io), it's an error
+                    word_stem = word_lower[:-len(form)]
+                    lemma_stem = lemma_lower[:-2]  # Remove -io
+                    if word_stem == lemma_stem:
+                        return True
+
+        return False
+
+    def _fix_abstract_noun_error(self, word: str, lemma: str) -> Optional[str]:
+        """Correct wrongly lemmatized abstract nouns and adjectives.
+
+        Converts incorrect verb lemmas back to their proper noun/adjective forms.
+
+        Args:
+            word: The original surface form
+            lemma: The incorrect lemma (verb form)
+
+        Returns:
+            The corrected lemma (noun/adjective form), or None if not applicable
+        """
+        word_lower = word.lower()
+        lemma_lower = lemma.lower()
+
+        # Pattern 1: -ito → -itas (most common error)
+        # diversito → diversitas
+        if lemma_lower.endswith("ito"):
+            stem = lemma_lower[:-3]  # Remove -ito
+            return stem + "itas"
+
+        # Pattern 2: -io → various noun forms
+        if lemma_lower.endswith("io"):
+            # Check if this matches a -tas noun pattern
+            # adclivio → adclivitas, diversito (but also handles -io ending)
+            # The key insight: extract the stem from the WORD and add -tas
+            tas_form_map = {
+                "tas": "tas",      # nominative singular
+                "tate": "tas",     # ablative singular
+                "tati": "tas",     # dative singular
+                "tatem": "tas",    # accusative singular
+                "tatis": "tas",    # genitive singular
+                "tatum": "tas",    # genitive plural
+                "tatibus": "tas",  # dative/ablative plural
+                "tates": "tas",    # nominative/accusative plural
+                "tatium": "tas",   # genitive plural alt form
+            }
+            for form, nom_ending in tas_form_map.items():
+                if word_lower.endswith(form):
+                    # Extract stem and reconstruct nominative
+                    word_stem = word_lower[:-len(form)]
+                    if word_stem:
+                        return word_stem + nom_ending
+
+            # Check if this matches a -ia noun pattern
+            # efficacio → efficacia
+            for form in ("iae", "iam", "iarum", "iis"):
+                if word_lower.endswith(form):
+                    word_stem = word_lower[:-len(form)]
+                    if word_stem:
+                        return word_stem + "ia"
+
+        # Pattern 3: -ilo → -ilis or -o → -is (for -bilis adjectives)
+        # adulabilo → adulabilis, cruciabilo → cruciabilis
+        if lemma_lower.endswith("ilo"):
+            stem = lemma_lower[:-3]  # Remove -ilo
+            return stem + "ilis"
+        elif lemma_lower.endswith("o"):
+            # Check if word has -bilis adjective form
+            for form in ("bilis", "bili", "bilem", "biles", "bilium", "bilibus", "bile"):
+                if word_lower.endswith(form):
+                    # Extract stem from word and reconstruct
+                    word_stem_end = len(word_lower) - len(form)
+                    if word_stem_end > 0:
+                        word_stem = word_lower[:word_stem_end]
+                        return word_stem + "bilis"
+
+        return None
 
     def _fix_truncation_error(self, word: str, lemma: str) -> Optional[str]:
         """Attempt to fix truncation errors using common patterns."""

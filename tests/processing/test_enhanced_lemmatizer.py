@@ -306,3 +306,97 @@ class TestEnhancedLatinLemmatizer:
 
         # Both should apply the same corrections
         assert lemmatizer_spacy._known_corrections == lemmatizer_no_spacy._known_corrections
+
+
+class TestAbstractNounLemmatization:
+    """Test correction of abstract noun lemmatization errors.
+
+    SpaCy/CLTK incorrectly lemmatizes Latin nouns and adjectives ending in
+    -tas/-tis and -bilis as verbs ending in -io/-o. These tests ensure the
+    enhanced lemmatizer corrects these errors.
+
+    Pattern:
+    - Words ending in -tas, -tate, -tatis → lemma should end in -tas
+    - Words ending in -bilis, -bili, -bilium → lemma should end in -bilis
+    """
+
+    @pytest.fixture
+    def lemmatizer(self):
+        """Create a lemmatizer instance for testing."""
+        return EnhancedLatinLemmatizer(prefer_spacy=True)
+
+    def test_corrects_tas_noun_to_io_verb_error(self, lemmatizer):
+        """Test correction of -tas nouns wrongly lemmatized as -io verbs."""
+        # SpaCy returns 'diversito' for 'diversitate', should be 'diversitas'
+        result = lemmatizer._fix_abstract_noun_error("diversitate", "diversito")
+        assert result == "diversitas"
+
+    def test_corrects_adclivitas_lemma(self, lemmatizer):
+        """Test adclivitas/acclivitas correction."""
+        result = lemmatizer._fix_abstract_noun_error("adclivitas", "adclivio")
+        assert result == "adclivitas" or result == "acclivitas"
+
+    def test_corrects_adfabilitas_lemma(self, lemmatizer):
+        """Test adfabilitas/affabilitas correction."""
+        result = lemmatizer._fix_abstract_noun_error("adfabilitate", "adfabilito")
+        assert result == "adfabilitas" or result == "affabilitas"
+
+    def test_corrects_bilis_adjective_to_o_verb_error(self, lemmatizer):
+        """Test correction of -bilis adjectives wrongly lemmatized as -o verbs."""
+        # SpaCy returns 'adulabilo' for 'adulabili', should be 'adulabilis'
+        result = lemmatizer._fix_abstract_noun_error("adulabili", "adulabilo")
+        assert result == "adulabilis"
+
+    def test_corrects_cruciabilis_lemma(self, lemmatizer):
+        """Test cruciabilis correction."""
+        result = lemmatizer._fix_abstract_noun_error("cruciabili", "cruciabilo")
+        assert result == "cruciabilis"
+
+    def test_corrects_efficacia_lemma(self, lemmatizer):
+        """Test efficacia correction (different pattern: -ia noun)."""
+        result = lemmatizer._fix_abstract_noun_error("efficaciae", "efficacio")
+        assert result == "efficacia"
+
+    def test_detects_io_verb_error_for_tas_noun(self, lemmatizer):
+        """Test detection of -io verb error for -tas nouns."""
+        # diversitate -> diversito is clearly wrong
+        assert lemmatizer._looks_like_abstract_noun_error("diversitate", "diversito")
+        # adclivitas -> adclivio is wrong
+        assert lemmatizer._looks_like_abstract_noun_error("adclivitas", "adclivio")
+
+    def test_detects_o_verb_error_for_bilis_adjective(self, lemmatizer):
+        """Test detection of -o verb error for -bilis adjectives."""
+        # adulabili -> adulabilo is wrong
+        assert lemmatizer._looks_like_abstract_noun_error("adulabili", "adulabilo")
+        # cruciabili -> cruciabilo is wrong
+        assert lemmatizer._looks_like_abstract_noun_error("cruciabili", "cruciabilo")
+
+    def test_does_not_detect_error_for_valid_verbs(self, lemmatizer):
+        """Test that valid verb lemmatizations are not flagged as errors."""
+        # These are legitimate -io verbs
+        assert not lemmatizer._looks_like_abstract_noun_error("audio", "audio")
+        assert not lemmatizer._looks_like_abstract_noun_error("facio", "facio")
+        assert not lemmatizer._looks_like_abstract_noun_error("capio", "capio")
+
+    def test_returns_none_for_non_matching_pattern(self, lemmatizer):
+        """Test that non-matching patterns return None."""
+        # These don't match the -tas/-bilis pattern
+        result = lemmatizer._fix_abstract_noun_error("rosa", "rosa")
+        assert result is None
+        result = lemmatizer._fix_abstract_noun_error("audio", "audio")
+        assert result is None
+
+    def test_integration_diversitate(self, lemmatizer):
+        """Integration test: full lemmatization of 'diversitate'."""
+        # This is an ablative singular of diversitas
+        result = lemmatizer.lemmatize("diversitate")
+        # Should be diversitas, not diversito
+        assert "diversit" in result.lower()
+        assert not result.lower().endswith("o")
+
+    def test_integration_adulabili(self, lemmatizer):
+        """Integration test: full lemmatization of 'adulabili'."""
+        # This is an ablative singular of adulabilis
+        result = lemmatizer.lemmatize("adulabili")
+        # Should end in -is (adulabilis), not -o
+        assert not result.lower().endswith("o")
