@@ -31,6 +31,36 @@
 
 \begin{document}
 
+{% if doc.metadata.title %}
+% Title Page
+\begin{titlepage}
+\centering
+\vspace*{2in}
+
+{\LARGE\bfseries {{ doc.metadata.title | latex_escape }}\par}
+
+{% if doc.metadata.author %}
+\vspace{0.5in}
+{\large {{ doc.metadata.author | latex_escape }}\par}
+{% endif %}
+
+{% if doc.metadata.passage_range %}
+\vspace{0.3in}
+{\large {{ doc.metadata.passage_range | latex_escape }}\par}
+{% endif %}
+
+\vspace{1in}
+{\normalsize A Steadman-Style Commentary\par}
+
+\vfill
+
+{% if doc.metadata.commentary_author %}
+{\small Commentary by {{ doc.metadata.commentary_author | latex_escape }}\par}
+{% endif %}
+
+\end{titlepage}
+{% endif %}
+
 {% if doc.core_vocabulary %}
 % Core Vocabulary - words appearing 15+ times (learn these first!)
 \begin{center}
