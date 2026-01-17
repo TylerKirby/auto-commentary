@@ -155,6 +155,146 @@ class LatinLexicon:
         8: "o",      # irregular (sum -> but handled specially)
     }
 
+    # Common Latin proper nouns (fallback vocabulary for names not in dictionaries)
+    PROPER_NOUNS: Dict[str, Dict[str, Any]] = {
+        # Trojan War / Aeneid
+        "Iuno": {
+            "headword": "Iūnō",
+            "genitive": "-ōnis",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Juno", "queen of the gods, wife of Jupiter"],
+        },
+        "Iunonis": {  # Genitive form (commonly found as lemma)
+            "headword": "Iūnō",
+            "genitive": "-ōnis",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Juno", "queen of the gods, wife of Jupiter"],
+        },
+        "Troia": {
+            "headword": "Trōia",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Troy", "ancient city in Asia Minor"],
+        },
+        "Troiae": {  # Genitive/dative form (commonly found as lemma)
+            "headword": "Trōia",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Troy", "ancient city in Asia Minor"],
+        },
+        "Aeneas": {
+            "headword": "Aenēās",
+            "genitive": "-ae",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Aeneas", "Trojan hero, son of Anchises and Venus"],
+        },
+        "Latinus": {
+            "headword": "Latīnus",
+            "genitive": "-ī",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Latinus", "king of the Latins, father of Lavinia"],
+        },
+        "Lavinia": {
+            "headword": "Lāvīnia",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Lavinia", "daughter of Latinus, wife of Aeneas"],
+        },
+        "Turnus": {
+            "headword": "Turnus",
+            "genitive": "-ī",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Turnus", "king of the Rutulians, rival of Aeneas"],
+        },
+        "Venus": {
+            "headword": "Venus",
+            "genitive": "-eris",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Venus", "goddess of love, mother of Aeneas"],
+        },
+        "Anchises": {
+            "headword": "Anchīsēs",
+            "genitive": "-ae",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Anchises", "father of Aeneas, Trojan prince"],
+        },
+        # Roman figures
+        "Roma": {
+            "headword": "Rōma",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Rome", "capital city of the Roman Empire"],
+        },
+        "Iuppiter": {
+            "headword": "Iuppiter",
+            "genitive": "Iovis",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Jupiter", "king of the gods, god of sky and thunder"],
+        },
+        "Mars": {
+            "headword": "Mārs",
+            "genitive": "Martis",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Mars", "god of war"],
+        },
+        "Minerva": {
+            "headword": "Minerva",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Minerva", "goddess of wisdom and crafts"],
+        },
+        "Apollo": {
+            "headword": "Apollō",
+            "genitive": "-inis",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Apollo", "god of music, poetry, and prophecy"],
+        },
+        "Diana": {
+            "headword": "Diāna",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Diana", "goddess of the hunt and moon"],
+        },
+        # Greek heroes/places (Latinized)
+        "Achilles": {
+            "headword": "Achillēs",
+            "genitive": "-is",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Achilles", "Greek hero of the Trojan War"],
+        },
+        "Ulixes": {
+            "headword": "Ulixēs",
+            "genitive": "-is",
+            "gender": "m.",
+            "pos": "noun",
+            "senses": ["Ulysses, Odysseus", "Greek hero, king of Ithaca"],
+        },
+        "Graecia": {
+            "headword": "Graecia",
+            "genitive": "-ae",
+            "gender": "f.",
+            "pos": "noun",
+            "senses": ["Greece", "land of the Greeks"],
+        },
+    }
+
     @staticmethod
     def _normalize_headword_for_match(text: str) -> str:
         lowered = text.lower()
@@ -918,14 +1058,18 @@ class LatinLexicon:
                     return entry
 
             # Fall back to Lewis & Short
-            entry = self._get_lewis_short_entry(lemma)
-            if entry:
-                return self._lewis_short_normalizer.normalize(entry, lemma)
+            ls_entry = self._get_lewis_short_entry(lemma)
+            if ls_entry:
+                normalized = self._lewis_short_normalizer.normalize(ls_entry, lemma)
+                if normalized:
+                    return normalized
         else:
             # Lewis & Short primary
-            entry = self._get_lewis_short_entry(lemma)
-            if entry:
-                return self._lewis_short_normalizer.normalize(entry, lemma)
+            ls_entry = self._get_lewis_short_entry(lemma)
+            if ls_entry:
+                normalized = self._lewis_short_normalizer.normalize(ls_entry, lemma)
+                if normalized:
+                    return normalized
 
             # Fall back to Whitaker's (with full headword reconstruction)
             if self._whitaker:
@@ -933,7 +1077,57 @@ class LatinLexicon:
                 if entry:
                     return entry
 
+        # Final fallback: check proper nouns dictionary
+        entry = self._lookup_proper_noun(lemma)
+        if entry:
+            return entry
+
         return None
+
+    def _lookup_proper_noun(self, lemma: str) -> Optional[NormalizedLexicalEntry]:
+        """Look up a lemma in the proper nouns dictionary.
+
+        This is a fallback for common proper nouns (Iuno, Troia, Aeneas, etc.)
+        that may not be in standard dictionaries.
+        """
+        # Try exact match first
+        if lemma in self.PROPER_NOUNS:
+            return self._proper_noun_to_entry(lemma, self.PROPER_NOUNS[lemma])
+
+        # Try capitalized version
+        capitalized = lemma.capitalize()
+        if capitalized in self.PROPER_NOUNS:
+            return self._proper_noun_to_entry(capitalized, self.PROPER_NOUNS[capitalized])
+
+        return None
+
+    def _proper_noun_to_entry(
+        self, lemma: str, data: Dict[str, Any]
+    ) -> NormalizedLexicalEntry:
+        """Convert a proper noun dictionary entry to NormalizedLexicalEntry."""
+        from autocom.core.lexical import Gender, Language, PartOfSpeech
+
+        # Map gender string to enum
+        gender = None
+        gender_str = data.get("gender", "")
+        if "m" in gender_str.lower():
+            gender = Gender.MASCULINE
+        elif "f" in gender_str.lower():
+            gender = Gender.FEMININE
+        elif "n" in gender_str.lower():
+            gender = Gender.NEUTER
+
+        return NormalizedLexicalEntry(
+            headword=data.get("headword", lemma),
+            lemma=lemma,
+            language=Language.LATIN,
+            pos=PartOfSpeech.NOUN,  # All proper nouns are nouns
+            gender=gender,
+            genitive=data.get("genitive"),
+            senses=data.get("senses", []),
+            source="proper_nouns",
+            confidence=1.0,
+        )
 
     def _try_latin_wordnet_api(self, lemma: str) -> List[str]:
         """Query Latin WordNet API for definitions."""
